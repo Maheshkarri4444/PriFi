@@ -39,6 +39,10 @@ contract PrivatePool {
     bytes32 public constant ZERO_COMMITMENT =
         bytes32(uint256(keccak256("ZERO_COMMITMENT")));
 
+    //global state
+    mapping(bytes32 => bool) nullifierSpent;
+    mapping(bytes32 => bool) commitmentExists;
+
     // verifiers
     IVerifier public immutable depositVerifier;
     IVerifier public immutable transferVerifier;
@@ -100,4 +104,28 @@ contract PrivatePool {
     function _currentPool() internal returns (Pool storage) {
         return pools[pools.length - 1];
     }
+
+    // Depsoit
+    //  * Public entry into the shielded pool.
+    //  *
+    //  * - ETH is sent with the transaction
+    //  * - One or two commitments are created
+    //  * - Commitments are inserted into the current pool(s)
+    //  * - Each commitment is logged with NoteCreated
+    //  *
+    //  * Wallet responsibilities (off-chain):
+    //  * - Choose amount + randomness
+    //  * - Compute commitment(s)
+    //  * - Encrypt note(s)
+    //  * - Track emitted poolId + leaf index
+    function deposit(
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[] calldata publicSignals,
+        bytes32 C1, // First commitment (required)
+        bytes32 C2, // 2nd commitment (optional eg: relayer fee)
+        bytes calldata encryptedNote1, // encrypted (amount, randomness) for C1
+        bytes calldata encryptedNote2 // Encrypted (amount, randomness) for C2
+    ) external payable {}
 }
