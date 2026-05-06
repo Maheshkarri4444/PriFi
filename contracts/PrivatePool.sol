@@ -1,0 +1,61 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+interface IVerifier {
+    function verifyProof(
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[] calldata publicSignals
+    ) external view returns (bool);
+}
+
+interface IPoseidon {
+    function hash(bytes32 left, bytes32 right) external pure returns (bytes32);
+}
+
+/**
+ * ShieldedPool
+ *
+ * A ZK-based UTXO-style private ETH pool.
+ *
+ * - ETH is locked in the contract
+ * - Ownership is represented by commitments (cmx)
+ * - Balances, senders, receivers, and amounts are hidden
+ * - Merkle trees track note existence
+ * - Nullifiers prevent double-spends
+ *
+ * All sensitive data is handled off-chain by wallets.
+ * On-chain logic only verifies cryptographic correctness.
+ */
+contract PrivatePool {
+    // constants
+    uint32 public constant TREE_DEPTH = 20;
+    uint32 public constant ROOT_HISTORY_SIZE = 10;
+    uint32 public constant MAX_LEAF = uint32(1) << TREE_DEPTH; // 2**20 value
+    uint32 constant MAX_INPUTS = 4;
+
+    // zero commitment - used in the place of empty commitment (wallet must use same convention)
+    bytes32 public constant ZERO_COMMITMENT =
+        bytes32(uint256(keccak256("ZERO_COMMITMENT")));
+
+    // verifiers
+    IVerifier public immutable depositVerifier;
+    IVerifier public immutable transferVerifier;
+    IVerifier public immutable withdrawVerifier;
+
+    // posidon
+    IPoseidon public immutable posidon;
+
+    constructor(
+        address _depositVerifier,
+        address _transferVerifier,
+        address _withdrawVerifier,
+        address _posidon
+    ) {
+        depositVerifier = IVerifier(_depositVerifier);
+        transferVerifier = IVerifier(_transferVerifier);
+        withdrawVerifier = IVerifier(_withdrawVerifier);
+        posidon = IPoseidon(_posidon);
+    }
+}
