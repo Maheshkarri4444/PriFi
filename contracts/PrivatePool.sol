@@ -47,6 +47,9 @@ contract PrivatePool {
     // posidon
     IPoseidon public immutable posidon;
 
+    // events
+    event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
+
     constructor(
         address _depositVerifier,
         address _transferVerifier,
@@ -57,6 +60,7 @@ contract PrivatePool {
         transferVerifier = IVerifier(_transferVerifier);
         withdrawVerifier = IVerifier(_withdrawVerifier);
         posidon = IPoseidon(_posidon);
+        _createPool();
     }
 
     struct Pool {
@@ -68,7 +72,32 @@ contract PrivatePool {
         bytes32[ROOT_HISTORY_SIZE] root_history; // stores the recent history of roots , so the system allows mempool delays to improve UX.
         uint32 rootPtr; // tracks newest position in circular root history
         uint32 nextIdx; // where next leaf insertion should happen
-        mapping(address => uint) validRoot; //fast membership check for acceptable roots
+        mapping(bytes32 => bool) validRoot; //fast membership check for acceptable roots
         // O(1) lookup wether the root is still valid (i.e still in root history) or not
+    }
+
+    Pool[] public pools;
+
+    function _createPool() internal {
+        Pool storage p = pools.push();
+        bytes32 zero = bytes32(0);
+
+        for (uint8 i = 0; i < TREE_DEPTH; i++) {
+            p.zeros[i] = zero; // the Z0,Z1,Z2 ...
+            p.filledSubtrees[i] = zero; // inital zero tree
+            zero = posidon.hash(zero, zero); // Z1 = hash(Z0,Z0) ... Z20 = hash(Z19,Z19)
+        }
+
+        p.root = zero; // Z20
+        p.root_history[0] = zero;
+        p.rootPtr = 0;
+        p.nextIdx = 0;
+        p.validRoot[zero] = true;
+
+        emit NewPool(pools.length - 1);
+    }
+
+    function _currentPool() internal returns (Pool storage) {
+        return pools[pools.length - 1];
     }
 }
