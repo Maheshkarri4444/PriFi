@@ -58,4 +58,17 @@ contract PrivatePool {
         withdrawVerifier = IVerifier(_withdrawVerifier);
         posidon = IPoseidon(_posidon);
     }
+
+    struct Pool {
+        bytes32[TREE_DEPTH] zeros; // the zeros are used to know the value of Z0, Z1, Z2 (i.e the zero hash value of each level)
+        bytes32[TREE_DEPTH] filledSubtrees; // Stores the latest filled LEFT subtree hash at each tree level
+        // its an optimistic approach to compute the root
+        // explanantion of filled subtrees is provided at notes/filled_subtress.txt
+        bytes32 root; //the current root
+        bytes32[ROOT_HISTORY_SIZE] root_history; // stores the recent history of roots , so the system allows mempool delays to improve UX.
+        uint32 rootPtr; // tracks newest position in circular root history
+        uint32 nextIdx; // where next leaf insertion should happen
+        mapping(address => uint) validRoot; //fast membership check for acceptable roots
+        // O(1) lookup wether the root is still valid (i.e still in root history) or not
+    }
 }

@@ -1,0 +1,233 @@
+
+TREE_DEPTH = 3
+
+maximum leaves = 2^3 = 8
+
+Leaves:
+0 1 2 3 4 5 6 7
+
+filledSubtrees[level] :
+        the latest completed LEFT node at that level
+        waiting for a RIGHT sibling
+
+
+Initial Zero Setup
+
+Z0 = 0
+Z1 = hash(Z0, Z0)
+Z2 = hash(Z1, Z1)
+
+Initial Tree:
+
+                ROOT = Z3
+               /         \
+             Z2           Z2
+           /    \       /    \
+         Z1      Z1   Z1      Z1
+        /  \    / \   / \    / \
+       Z0 Z0  Z0 Z0 Z0 Z0  Z0   Z0
+
+filledSubtrees[0] = Z0
+filledSubtrees[1] = Z1
+filledSubtrees[2] = Z2
+
+
+EXAMPLE:
+
+1. INSERT A
+
+    A inserted at index 0
+
+    Binary index: 000
+
+    LEVEL 0
+
+        Index bit:
+            0 → EVEN
+
+        Meaning:
+            A becomes LEFT child
+
+        So:
+            filledSubtrees[0] = A
+
+        because:
+            we are waiting for RIGHT sibling later
+
+        Then compute parent:
+            H1 = hash(A, Z0)
+
+        Why Z0?
+            Because right sibling doesn’t exist yet.
+
+
+    LEVEL 1
+
+        Shift index:
+            000 >> 1 = 00
+
+        Still EVEN.
+        Meaning:
+            H1 becomes LEFT subtree
+
+        Store:
+            filledSubtrees[1] = H1
+
+        Then:
+            H2 = hash(H1, Z1)
+
+    LEVEL 2
+        Again EVEN.
+
+        Store:
+            filledSubtrees[2] = H2
+
+        Then:
+            ROOT = hash(H2, Z2)
+
+        After A Inserted:
+            filledSubtrees
+            level 0 → A
+            level 1 → H1
+            level 2 → H2
+
+    Meaning:
+        all LEFT branches waiting for right siblings.
+
+2. INSERT B
+
+    Now:
+        B inserted at index 1
+
+    Binary:
+        001
+    
+    LEVEL 0
+        LSB:
+        1 → ODD
+
+        Meaning:
+            RIGHT child arrived
+
+        So LEFT sibling already exists:
+            filledSubtrees[0] = A
+
+        Now compute:
+            HAB = hash(A, B)
+
+    LEVEL 1
+        Shift:
+            001 >> 1 = 000
+
+        Now EVEN.
+
+        Meaning:
+            HAB becomes LEFT subtree
+
+        Store:
+            filledSubtrees[1] = HAB
+
+        Then:
+            HABZ = hash(HAB, Z1)
+    
+    LEVEL 2
+        Again EVEN.
+        Store:
+            filledSubtrees[2] = HABZ
+        Then:
+            ROOT = hash(HABZ, Z2)
+
+3. INSERT C
+
+    Index:
+        2 = 010
+    
+    LEVEL 0
+        LSB: 0
+        Even.
+        Store:
+            filledSubtrees[0] = C
+        Then:
+            HC = hash(C, Z0)
+
+    LEVEL 1
+        Shift:
+            010 >> 1 = 001
+        ODD now.
+
+        Meaning:
+            LEFT subtree already exists
+
+        Which LEFT subtree?
+            filledSubtrees[1] = HAB
+        So:
+            HABC = hash(HAB, HC)
+
+    LEVEL 2
+        Shift:
+            001 >> 1 = 000
+        EVEN.
+        Store:
+            filledSubtrees[2] = HABC
+        Then:
+            ROOT = hash(HABC, Z2)
+
+IMPORTANT OBSERVATION
+
+    After inserting C:
+
+        filledSubtrees[0] = C
+        filledSubtrees[1] = HAB
+        filledSubtrees[2] = HABC
+
+    Meaning:
+        Level 0
+            C waiting for D
+        Level 1
+            AB subtree waiting for CD subtree
+        Level 2
+            ABC subtree waiting for right half of tree
+
+4. INSERT D
+    Index:
+        3 = 011
+
+        LEVEL 0
+        ODD.
+        Use:
+            filledSubtrees[0] = C
+        Compute:
+            HCD = hash(C, D)
+
+        LEVEL 1
+            Shift:
+                011 >> 1 = 001
+            ODD again.
+
+            Use:
+                filledSubtrees[1] = HAB
+
+            Compute:
+                HABCD = hash(HAB, HCD)
+
+
+        LEVEL 2
+            Shift:
+                001 >> 1 = 000
+                EVEN.
+
+            Store:
+                filledSubtrees[2] = HABCD
+
+            Then:
+                ROOT = hash(HABCD, Z2)
+
+
+At every level:
+
+EVEN index
+    new LEFT subtree created
+    → store it
+ODD index
+    RIGHT sibling arrived
+    → combine with stored LEFT subtree
