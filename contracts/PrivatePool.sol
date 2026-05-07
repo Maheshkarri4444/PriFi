@@ -17,9 +17,9 @@ interface IPoseidon {
 /**
  * ShieldedPool
  *
- * A ZK-based UTXO-style private ETH pool.
+ * A ZK-based UTXO-style private ETH/EVM-based-coins pool.
  *
- * - ETH is locked in the contract
+ * - ETH or Evm-based-coins (like monad) is locked in the contract
  * - Ownership is represented by commitments (cmx)
  * - Balances, senders, receivers, and amounts are hidden
  * - Merkle trees track note existence
@@ -124,8 +124,22 @@ contract PrivatePool {
         uint256[2] calldata c,
         uint256[] calldata publicSignals,
         bytes32 C1, // First commitment (required)
-        bytes32 C2, // 2nd commitment (optional eg: relayer fee)
+        bytes32 C2, // 2nd commitment
         bytes calldata encryptedNote1, // encrypted (amount, randomness) for C1
         bytes calldata encryptedNote2 // Encrypted (amount, randomness) for C2
-    ) external payable {}
+    ) external payable {
+        require(msg.value != 0, "No ethereum");
+        // public signals
+        // deposit amount
+        // c1
+        // c2
+        require(publicSignals.length == 3, "Insufficient public signals");
+        require(publicSignals[0] == msg.value, "Value mismatch");
+        require(commitmentExists[C1], "Commitment 1 already existing");
+        require(commitmentExists[C2], "Commitment 2 already existing");
+
+        // in deposit we dont need to check merkle path
+
+        // deposit zk , proves that the amounts that are in the commitments equals deposited amount
+    }
 }

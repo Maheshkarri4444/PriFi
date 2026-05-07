@@ -22,9 +22,15 @@ template MerklePath(depth){
         signal left;
         signal right;
 
-        // left = cur * (1 - idx) + sibling * idx
+        // if idx == 0:
+        // left = cur
+        // right = sibling
+        //
+        // if idx == 1:
+        // left = sibling
+        // right = cur
+        
         left <== (1 - pathIndices[i]) * cur[i] +  pathIndices[i] * pathElements[i];
-        // right child = curr * (1 - pathIdx) + pathElement * pathIdx
         right <== pathIndices[i] * cur[i] + (1 - pathIndices[i]) * pathElements[i];
 
         hasher.inputs[0] <== left;

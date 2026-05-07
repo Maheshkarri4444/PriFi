@@ -1,0 +1,17 @@
+Deposit Flow 
+
+Off-Chain: 
+    - User selects:
+        - Deposit amount `a`
+        - Fresh randomness `r`
+    - User encrypts note data:
+        - `ciphertext = Encrypt(receiverPubKey, (a, r))`
+    - User computes commitment:
+        - `C = H(a, r, receiverPubKey)`
+
+On-Chain:
+- Transaction sent to shielded pool contract
+    - ETH value `a` is transferred to the pool
+    - Contract actions:
+        - Stores commitment `C`
+        - Emits event encrypted payload `ciphertext`
