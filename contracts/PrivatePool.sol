@@ -101,7 +101,8 @@ contract PrivatePool {
         emit NewPool(pools.length - 1);
     }
 
-    function _currentPool() internal returns (Pool storage) {
+    // returns current pool
+    function _currentPool() internal view returns (Pool storage) {
         return pools[pools.length - 1];
     }
 
@@ -129,17 +130,105 @@ contract PrivatePool {
         bytes calldata encryptedNote2 // Encrypted (amount, randomness) for C2
     ) external payable {
         require(msg.value != 0, "No ethereum");
+
+        require(C1 != ZERO_COMMITMENT, "Invalid commitment 1");
+        require(C2 != ZERO_COMMITMENT, "Invalid commitment 2");
+
+        require(
+            commitmentExists[C1],
+            "Commitment 1 already existing, change r value"
+        );
+        require(
+            commitmentExists[C2],
+            "Commitment 2 already existing, change r value"
+        );
         // public signals
         // deposit amount
         // c1
         // c2
         require(publicSignals.length == 3, "Insufficient public signals");
         require(publicSignals[0] == msg.value, "Value mismatch");
-        require(commitmentExists[C1], "Commitment 1 already existing");
-        require(commitmentExists[C2], "Commitment 2 already existing");
-
+        require(bytes32(publicSignals[1]) == C1, "Commitment 1 mismatch");
+        require(bytes32(publicSignals[2]) == C2, "Commitment 2 mismatch");
         // in deposit we dont need to check merkle path
-
         // deposit zk , proves that the amounts that are in the commitments equals deposited amount
+        require(
+            depositVerifier.verifyProof(a, b, c, publicSignals),
+            "Deposit proof verification failed"
+        );
+
+        // addition of group of commitments to be added here
+    }
+
+    struct InsertedNote {
+        uint256 poolId;
+        bytes32 commitment;
+    }
+
+    //update pool for commitment
+    function _updatePool(Pool storage p, bytes32 commitment) internal {
+        bytes32 current = commitment;
+        uint256 idx = p.nextIdx;
+        p.nextIdx++; // update the next index
+        // compute the root
+        for (uint16 i = 0; i < TREE_DEPTH; i++) {
+            // idx & 1 -> extracts lsb and & 1 decides odd or even
+            if ((idx & 1) == 0) {
+                // even -> the current one is left
+                // so add it to the subtree, compute hash with zero[i](i.e Zi -> refere notes/filled_subtrees.txt)
+                p.filledSubtrees[i] = current;
+                current = posidon.hash(current, p.zeros[i]);
+            } else {
+                // odd -> the current one is right
+                // so hash it with present value of the subtree
+                current = posidon.hash(p.filledSubtrees[i], current);
+            }
+            idx >>= 1; // shifts 1 bit
+        }
+        p.root = current; //update root
+    }
+
+    // it inserts the group of commitments all at once.
+    function _insertBatch(
+        bytes32[] memory commitments
+    ) internal returns (InsertedNote[] memory inserted) {
+        inserted = new InsertedNote[](commitments.length); // inserted notes
+        uint32 idx = 0; // how many currently inserted into pool
+        uint32 outIdx = 0; // how many inserted currently inserted into the array
+        uint256 total = commitments.length; // num of commitments
+
+        while (idx < total) {
+            Pool storage pool = _currentPool();
+            uint256 poolId = pools.length - 1;
+            uint32 remaining = MAX_LEAF - pool.nextIdx; // how many can be inserted in this pool
+
+            // if there is no space in pool -> create pool
+            if (remaining == 0) {
+                _createPool();
+                continue;
+            }
+
+            uint32 left = uint32(remaining - idx); //
+            uint32 toInsert = remaining < left ? remaining : left;
+
+            // insert leafs without pushing the root here
+            for (uint8 i = 0; i < toInsert; i++) {
+                bytes32 C = commitments[idx++]; // commitment
+                commitmentExists[C] = true; //add commitment to commitment pool
+                // update pool for the commitment
+                _updatePool(pool, C);
+                inserted[outIdx++] = InsertedNote({
+                    poolId: poolId,
+                    commitment: C
+                });
+            }
+
+            // push root only once for group of commitments
+            _pushRoot(pool, pool.root);
+        }
+    }
+
+    function _pushRoot(Pool storage p, bytes32 root) internal {
+        // to be implemented
     }
 }
