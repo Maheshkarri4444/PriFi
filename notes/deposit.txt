@@ -1,17 +1,54 @@
-Deposit Flow 
+Deposit Flow
+    Off-Chain:
 
-Off-Chain: 
-    - User selects:
-        - Deposit amount `a`
-        - Fresh randomness `r`
-    - User encrypts note data:
-        - `ciphertext = Encrypt(receiverPubKey, (a, r))`
-    - User computes commitment:
-        - `C = H(a, r, receiverPubKey)`
+        User signs a fixed message using their wallet
+        Wallet derives:
+            zkPrivateKey = H(signature("prifiwallet"))
+            zkPublicKey = Poseidon(zkPrivateKey)
 
-On-Chain:
-- Transaction sent to shielded pool contract
-    - ETH value `a` is transferred to the pool
-    - Contract actions:
-        - Stores commitment `C`
-        - Emits event encrypted payload `ciphertext`
+        User selects:
+            Deposit amount "a"
+            Relayer/protocol fee "fee"
+
+        Wallet creates 2 private notes:
+            User note:
+                (a - fee, r1, zkPublicKey)
+                > r1 is a fresh randomness
+            Relayer fee note:
+                (fee, r2, relayerPubKey) 
+                > r2 is a fresh randomness
+        Wallet computes commitments:
+            C1 = H(a - fee, r1, zkPublicKey)
+            C2 = H(fee, r2, relayerPubKey)
+
+        Wallet encrypts note data:
+            ciphertext1 = Encrypt(zkPublicKey, (a - fee, r1))
+            ciphertext2 = Encrypt(relayerPubKey, (fee, r2))
+        
+        Wallet generates a zk proof proving:
+            (a - fee) + fee = deposited ETH amount
+
+        without revealing:
+            note amounts
+            randomness
+            ownership information
+
+
+    On-Chain:
+        Transaction sent to shielded pool contract
+        ETH value a is transferred into the pool
+
+        Contract verifies:
+            zk proof validity
+            commitment correctness
+            deposit amount consistency
+
+        Contract inserts:
+            C1
+            C2
+        into the incremental Merkle tree
+
+        Contract emits encrypted note events:
+            encryptedNote1
+            encryptedNote2
+        User and relayer wallets scan emitted events to recover their notes.

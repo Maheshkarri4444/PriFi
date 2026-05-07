@@ -53,6 +53,7 @@ contract PrivatePool {
 
     // events
     event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
+    // we dont store the encryptedNotes on chain ( storage gas ) instead we emit them as events
     event NoteCreated(uint256 poolId, bytes32 commitment, bytes encryptedNote);
 
     constructor(
@@ -125,15 +126,17 @@ contract PrivatePool {
         uint256[2] calldata c,
         uint256[] calldata publicSignals,
         bytes32 C1, // First commitment (required)
-        bytes32 C2, // 2nd commitment
+        bytes32 C2, // 2nd commitment   relayer fee
         bytes calldata encryptedNote1, // encrypted (amount, randomness) for C1
         bytes calldata encryptedNote2 // Encrypted (amount, randomness) for C2
     ) external payable {
         require(msg.value != 0, "No ethereum");
 
+        // zero commitments are only for transfer call
         require(C1 != ZERO_COMMITMENT, "Invalid commitment 1");
         require(C2 != ZERO_COMMITMENT, "Invalid commitment 2");
 
+        // commitments already exists?
         require(
             commitmentExists[C1],
             "Commitment 1 already existing, change r value"
@@ -166,6 +169,7 @@ contract PrivatePool {
         for (uint8 i = 0; i < 2; i++) {
             InsertedNote memory note = notesInserted[i];
             if (i == 0) {
+                // emit the note created event
                 emit NoteCreated(note.poolId, note.commitment, encryptedNote1);
             } else {
                 emit NoteCreated(note.poolId, note.commitment, encryptedNote2);
