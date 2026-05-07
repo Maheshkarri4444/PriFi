@@ -53,6 +53,7 @@ contract PrivatePool {
 
     // events
     event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
+    event NoteCreated(uint256 poolId, bytes32 commitment, bytes encryptedNote);
 
     constructor(
         address _depositVerifier,
@@ -73,8 +74,8 @@ contract PrivatePool {
         // its an optimistic approach to compute the root
         // explanantion of filled subtrees is provided at notes/filled_subtress.txt
         bytes32 root; //the current root
-        bytes32[ROOT_HISTORY_SIZE] root_history; // stores the recent history of roots , so the system allows mempool delays to improve UX.
-        uint32 rootPtr; // tracks newest position in circular root history
+        bytes32[ROOT_HISTORY_SIZE] rootHistory; // stores the recent history of roots , so the system allows mempool delays to improve UX.
+        uint32 rootPtr; // where next root is to be inserted in the circular root history
         uint32 nextIdx; // where next leaf insertion should happen
         mapping(bytes32 => bool) validRoot; //fast membership check for acceptable roots
         // O(1) lookup wether the root is still valid (i.e still in root history) or not
@@ -93,10 +94,9 @@ contract PrivatePool {
         }
 
         p.root = zero; // Z20
-        p.root_history[0] = zero;
+        p.rootHistory[0] = zero;
         p.rootPtr = 0;
         p.nextIdx = 0;
-        p.validRoot[zero] = true;
 
         emit NewPool(pools.length - 1);
     }
@@ -157,7 +157,20 @@ contract PrivatePool {
             "Deposit proof verification failed"
         );
 
+        bytes32[] memory commitments = new bytes32[](2);
+        commitments[0] = C1;
+        commitments[1] = C2;
+
         // addition of group of commitments to be added here
+        InsertedNote[] memory notesInserted = _insertBatch(commitments);
+        for (uint8 i = 0; i < 2; i++) {
+            InsertedNote memory note = notesInserted[i];
+            if (i == 0) {
+                emit NoteCreated(note.poolId, note.commitment, encryptedNote1);
+            } else {
+                emit NoteCreated(note.poolId, note.commitment, encryptedNote2);
+            }
+        }
     }
 
     struct InsertedNote {
@@ -228,7 +241,15 @@ contract PrivatePool {
         }
     }
 
-    function _pushRoot(Pool storage p, bytes32 root) internal {
-        // to be implemented
+    function _pushRoot(Pool storage p, bytes32 newRoot) internal {
+        // current root
+        bytes32 oldRoot = p.rootHistory[p.rootPtr]; // old root at that position
+        if (oldRoot != bytes32(0)) {
+            p.validRoot[oldRoot] = false; // old root no more a valid root
+        }
+
+        p.rootHistory[p.rootPtr] = newRoot; // store new root in the history
+        p.validRoot[newRoot] = true; // new root in valid roots
+        p.rootPtr = (p.rootPtr + 1) % ROOT_HISTORY_SIZE; // increament root ptr (i.e where next root will be inserted)
     }
 }
