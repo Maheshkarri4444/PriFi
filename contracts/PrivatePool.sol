@@ -29,6 +29,15 @@ interface IPoseidon {
  * On-chain logic only verifies cryptographic correctness.
  */
 contract PrivatePool {
+    /**
+     * Wallet:
+     *      Get signature from real wallet
+     *      PrivateKey = H(signature("prifiwallet"))
+     *      Derive:
+     *          zkPublicKey = Poseidon(PrivateKey) // used for transfer
+     *          encPublicKey = EC_Derive(PrivateKey) // used for encrypting notes
+     */
+
     // constants
     uint32 public constant TREE_DEPTH = 20;
     uint32 public constant ROOT_HISTORY_SIZE = 10;
@@ -124,7 +133,6 @@ contract PrivatePool {
         uint256[2] calldata a,
         uint256[2][2] calldata b,
         uint256[2] calldata c,
-        uint256[] calldata publicSignals,
         bytes32 C1, // First commitment (required)
         bytes32 C2, // 2nd commitment   relayer fee
         bytes calldata encryptedNote1, // encrypted (amount, randomness) for C1
@@ -149,10 +157,11 @@ contract PrivatePool {
         // deposit amount
         // c1
         // c2
-        require(publicSignals.length == 3, "Insufficient public signals");
-        require(publicSignals[0] == msg.value, "Value mismatch");
-        require(bytes32(publicSignals[1]) == C1, "Commitment 1 mismatch");
-        require(bytes32(publicSignals[2]) == C2, "Commitment 2 mismatch");
+        uint256[] memory publicSignals = new uint256[](3);
+        publicSignals[0] = msg.value;
+        publicSignals[1] = uint256(C1);
+        publicSignals[2] = uint256(C2);
+
         // in deposit we dont need to check merkle path
         // deposit zk , proves that the amounts that are in the commitments equals deposited amount
         require(
@@ -177,6 +186,35 @@ contract PrivatePool {
         }
     }
 
+    // transfer call
+    struct TransferCall {
+        // zk proof
+        uint256[2] a;
+        uint256[2][2] b;
+        uint256[2] c;
+        //public inputs of zkproof
+        uint8[MAX_INPUTS] enabled; // decides wether input at index is present or not
+        bytes32[MAX_INPUTS] roots; // tree roots which the respective commiment belongs to.
+        uint256[MAX_INPUTS] poolIds; // poolid of that root
+        bytes32[MAX_INPUTS] nullifiers; // nullifier for each commitment
+        // outputs (maximum of 3)
+        bytes32 C1; // receiver commitment (Required)
+        bytes32 C2; // change commitment
+        bytes32 C3; // relayer commitment
+        bytes encryptedNote1; // receiver encrypted note
+        bytes encryptedNote2; // change encrypted note
+        bytes encryptedNote3; // relayer encrypted note
+    }
+    /*
+     * - Each TransferCall consumes between 1 and MAX_INPUTS private input notes
+     * - Multiple TransferCalls can be executed atomically in a single transaction
+     * - Later TransferCalls may spend commitments created by earlier TransferCalls
+     *   within the same transaction
+     * - This enables note aggregation and large fan-in transfers
+     *   while remaining atomic and private
+     */
+
+    // helper functions
     struct InsertedNote {
         uint256 poolId;
         bytes32 commitment;

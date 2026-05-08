@@ -3,8 +3,9 @@ Deposit Flow
 
         User signs a fixed message using their wallet
         Wallet derives:
-            zkPrivateKey = H(signature("prifiwallet"))
-            zkPublicKey = Poseidon(zkPrivateKey)
+            PrivateKey = H(signature("prifiwallet"))
+            zkPublicKey = Poseidon(PrivateKey)
+            encPublicKey = EC_Derive(PrivateKey)
 
         User selects:
             Deposit amount "a"
@@ -15,15 +16,15 @@ Deposit Flow
                 (a - fee, r1, zkPublicKey)
                 > r1 is a fresh randomness
             Relayer fee note:
-                (fee, r2, relayerPubKey) 
+                (fee, r2, relayerZkPubKey) 
                 > r2 is a fresh randomness
         Wallet computes commitments:
             C1 = H(a - fee, r1, zkPublicKey)
-            C2 = H(fee, r2, relayerPubKey)
+            C2 = H(fee, r2, relayerZkPubKey)
 
         Wallet encrypts note data:
-            ciphertext1 = Encrypt(zkPublicKey, (a - fee, r1))
-            ciphertext2 = Encrypt(relayerPubKey, (fee, r2))
+            ciphertext1 = Encrypt(encPublicKey, (a - fee, r1))
+            ciphertext2 = Encrypt(relayerEncPubKey, (fee, r2))
         
         Wallet generates a zk proof proving:
             (a - fee) + fee = deposited ETH amount
