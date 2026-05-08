@@ -424,15 +424,18 @@ contract PrivatePool {
         publicSignals[idx++] = call.withdrawAmount;
 
         // outputs enabled
-        bytes32[] memory outCmx = new bytes32[](2);
+        bytes32[] memory tempOutCmx = new bytes32[](2);
+        uint8 cmxCount = 0;
         if (call.C1 != ZERO_COMMITMENT) {
             publicSignals[idx++] = 1;
+            tempOutCmx[cmxCount++] = call.C1;
         } else {
             publicSignals[idx++] = 0;
         }
 
         if (call.C2 != ZERO_COMMITMENT) {
             publicSignals[idx++] = 1;
+            tempOutCmx[cmxCount++] = call.C2;
         } else {
             publicSignals[idx++] = 0;
         }
@@ -447,7 +450,33 @@ contract PrivatePool {
             "Withdraw proof verification failed"
         );
 
-        // commitments to be added
+        // add nullifiers to the pool
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            if (call.enabled[i] == 0) continue;
+            nullifierSpent[call.nullifiers[i]] = true;
+            emit NullifierSpent(call.nullifiers[i]);
+        }
+
+        // add commitments to the pool
+        bytes32[] memory commitments = new bytes32[](cmxCount);
+        for (uint8 i = 0; i < cmxCount; i++) {
+            commitments[i] = tempOutCmx[i];
+        }
+        InsertedNote[] memory insertedNotes = _insertBatch(commitments);
+        for (uint8 i = 0; i < insertedNotes.length; i++) {
+            bytes memory enc;
+            if (insertedNotes[i].commitment == call.C1)
+                enc = call.encryptedNote1;
+            else if (insertedNotes[i].commitment == call.C2)
+                enc = call.encryptedNote2;
+            else revert("Unkown commiment");
+
+            emit NoteCreated(
+                insertedNotes[i].poolId,
+                insertedNotes[i].commitment,
+                enc
+            );
+        }
     }
 
     // helper functions
