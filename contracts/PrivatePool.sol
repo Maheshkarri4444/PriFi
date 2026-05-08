@@ -384,6 +384,70 @@ contract PrivatePool {
         // add all the nullifiers to the pool
         // add new commitements to the pool
         // transfer
+
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            require(
+                (call.enabled[i] * (1 - call.enabled[i])) == 0,
+                "Invalid enabled flag"
+            );
+
+            Pool storage p = pools[call.poolIds[i]];
+            require(p.validRoot[call.roots[i]], "Invalid root");
+
+            require(
+                !nullifierSpent[call.nullifiers[i]],
+                "Nullifier already exists"
+            );
+        }
+
+        // for zk proof rquired public inputs:
+        /**
+            enabled,
+            roots,
+            nullifiers,
+            withdrawAmount,
+            out_enabled,
+            c_outs,
+         */
+        uint256[] memory publicSignals = new uint256[](
+            MAX_INPUTS * 3 + 1 + (2 * 2)
+        );
+
+        // enabled roots nullifier
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            publicSignals[i] = uint256(call.enabled[i]);
+            publicSignals[i + 4] = uint256(call.roots[i]);
+            publicSignals[i + 8] = uint256(call.nullifiers[i]);
+        }
+        // withdraw amount
+        uint8 idx = 12;
+        publicSignals[idx++] = call.withdrawAmount;
+
+        // outputs enabled
+        bytes32[] memory outCmx = new bytes32[](2);
+        if (call.C1 != ZERO_COMMITMENT) {
+            publicSignals[idx++] = 1;
+        } else {
+            publicSignals[idx++] = 0;
+        }
+
+        if (call.C2 != ZERO_COMMITMENT) {
+            publicSignals[idx++] = 1;
+        } else {
+            publicSignals[idx++] = 0;
+        }
+
+        // c_outs
+        publicSignals[idx++] = uint256(call.C1);
+        publicSignals[idx++] = uint256(call.C2);
+
+        // verify withdraw proof
+        require(
+            withdrawVerifier.verifyProof(call.a, call.b, call.c, publicSignals),
+            "Withdraw proof verification failed"
+        );
+
+        // commitments to be added
     }
 
     // helper functions

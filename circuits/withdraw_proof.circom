@@ -36,7 +36,7 @@ template WithdrawProof(max_inputs, depth) {
 
     // owndership check
     component ownHasher = Poseidon(1);
-    ownHasher.inputs[1] <== sk;
+    ownHasher.inputs[0] <== sk;
     pk === ownHasher.out;
 
     //INPUTS VALIDATION
@@ -74,9 +74,9 @@ template WithdrawProof(max_inputs, depth) {
 
         //input commitment computation checkup
         component comHasher = Poseidon(3);
-        comHasher.inputs[0] = a_ins[i];
-        comHasher.inputs[1] = r_ins[i];
-        comHasher.inputs[2] = pk;
+        comHasher.inputs[0] <== a_ins[i];
+        comHasher.inputs[1] <== r_ins[i];
+        comHasher.inputs[2] <== pk;
 
         // constraint 
         enabled[i] * (comHasher.out - c_ins[i]) === 0;
@@ -94,9 +94,9 @@ template WithdrawProof(max_inputs, depth) {
 
         // nullifiers checkup
         component nullHasher = Poseidon(3);
-        nullHasher.inputs[0] = c_ins[i];
-        nullHasher.inputs[1] = r_ins[i];
-        nullHasher.inputs[2] = sk;
+        nullHasher.inputs[0] <== c_ins[i];
+        nullHasher.inputs[1] <== r_ins[i];
+        nullHasher.inputs[2] <== sk;
 
         enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
     }
@@ -115,7 +115,7 @@ template WithdrawProof(max_inputs, depth) {
 
     signal outSum[3];
     signal y[2];
-    outSum <== 0;
+    outSum[0] <== 0;
 
     for(var i = 0; i < 2; i++){
         // output enabled signal
@@ -126,9 +126,9 @@ template WithdrawProof(max_inputs, depth) {
 
         // output commitment computation checkup
         component outHasher = Poseidon(3);
-        outHasher.inputs[0] = a_outs[i];
-        outHasher.inputs[1] = r_outs[i];
-        outHasher.inputs[2] = receivers[i];
+        outHasher.inputs[0] <== a_outs[i];
+        outHasher.inputs[1] <== r_outs[i];
+        outHasher.inputs[2] <== receivers[i];
 
         //constraint
         out_enabled[i] * (outHasher.out - c_outs[i]) === 0;
