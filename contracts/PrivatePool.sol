@@ -57,8 +57,8 @@ contract PrivatePool {
     IVerifier public immutable transferVerifier;
     IVerifier public immutable withdrawVerifier;
 
-    // posidon
-    IPoseidon public immutable posidon;
+    // poseidon
+    IPoseidon public immutable poseidon;
 
     // events
     event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
@@ -71,12 +71,12 @@ contract PrivatePool {
         address _depositVerifier,
         address _transferVerifier,
         address _withdrawVerifier,
-        address _posidon
+        address _poseidon
     ) {
         depositVerifier = IVerifier(_depositVerifier);
         transferVerifier = IVerifier(_transferVerifier);
         withdrawVerifier = IVerifier(_withdrawVerifier);
-        posidon = IPoseidon(_posidon);
+        poseidon = IPoseidon(_poseidon);
         _createPool();
     }
 
@@ -102,13 +102,14 @@ contract PrivatePool {
         for (uint8 i = 0; i < TREE_DEPTH; i++) {
             p.zeros[i] = zero; // the Z0,Z1,Z2 ...
             p.filledSubtrees[i] = zero; // inital zero tree
-            zero = posidon.hash(zero, zero); // Z1 = hash(Z0,Z0) ... Z20 = hash(Z19,Z19)
+            zero = poseidon.hash(zero, zero); // Z1 = hash(Z0,Z0) ... Z20 = hash(Z19,Z19)
         }
 
         p.root = zero; // Z20
         p.rootHistory[0] = zero;
         p.rootPtr = 0;
         p.nextIdx = 0;
+        p.validRoot[zero] = true;
 
         emit NewPool(pools.length - 1);
     }
@@ -142,7 +143,7 @@ contract PrivatePool {
     ) external payable {
         require(msg.value != 0, "No ethereum");
 
-        // zero commitments are only for transfer call
+        // zero commitments are only for transfer/withdraw calls
         require(C1 != ZERO_COMMITMENT, "Invalid commitment 1");
         require(C2 != ZERO_COMMITMENT, "Invalid commitment 2");
 
@@ -226,8 +227,8 @@ contract PrivatePool {
      * For exact understanding Refer: notes/zk_proof_transfer.txt
      */
 
-    function transfer(TransferCall[] memory calls) external payable {
-        for (uint8 i = 0; i < calls.length; i++) {
+    function transfer(TransferCall[] memory calls) external {
+        for (uint256 i = 0; i < calls.length; i++) {
             _singleTransfer(calls[i]);
         }
     }
@@ -242,6 +243,7 @@ contract PrivatePool {
             if (call.enabled[i] == 0) {
                 continue;
             }
+            require(call.poolIds[i] < pools.length, "Invalid poolId");
             Pool storage p = pools[call.poolIds[i]];
             require(p.validRoot[call.roots[i]], "Invalid root");
 
@@ -249,6 +251,28 @@ contract PrivatePool {
                 !nullifierSpent[call.nullifiers[i]],
                 "Nullifier already spent"
             );
+            // all nullifiers in a Transfer call must be unique
+            for (uint8 j = 0; j < i; j++) {
+                if (call.enabled[j] == 0) continue;
+
+                require(
+                    call.nullifiers[i] != call.nullifiers[j],
+                    "Duplicate nullifier"
+                );
+            }
+        }
+
+        // commitments duplicate check
+        if (call.C1 != ZERO_COMMITMENT && call.C2 != ZERO_COMMITMENT) {
+            require(call.C1 != call.C2, "Duplicate commitments");
+        }
+
+        if (call.C1 != ZERO_COMMITMENT && call.C3 != ZERO_COMMITMENT) {
+            require(call.C1 != call.C3, "Duplicate commitments");
+        }
+
+        if (call.C2 != ZERO_COMMITMENT && call.C3 != ZERO_COMMITMENT) {
+            require(call.C2 != call.C3, "Duplicate commitments");
         }
 
         // zkproof
@@ -316,6 +340,10 @@ contract PrivatePool {
         // add nullifiers to the pool
         for (uint8 i = 0; i < MAX_INPUTS; i++) {
             if (call.enabled[i] == 0) continue;
+            require(
+                !nullifierSpent[call.nullifiers[i]],
+                "Nullifier already exists"
+            );
             nullifierSpent[call.nullifiers[i]] = true;
             emit NullifierSpent(call.nullifiers[i]);
         }
@@ -331,7 +359,7 @@ contract PrivatePool {
                 enc = call.encryptedNote2;
             else if (notesInserted[i].commitment == call.C3)
                 enc = call.encryptedNote3;
-            else revert("Unkown commitment");
+            else revert("Unknown commitment");
 
             // emit the poolId , cmx , encryptedNote
             emit NoteCreated(
@@ -370,14 +398,18 @@ contract PrivatePool {
 
     function withdraw(
         WithdrawCall[] calldata calls,
-        address to
-    ) external payable {
-        for (uint8 i = 0; i < calls.length; i++) {
-            _singleWithdraw(calls[i], to);
+        address payable to
+    ) external {
+        uint256 totalWithdrawAmount = 0;
+        for (uint256 i = 0; i < calls.length; i++) {
+            _singleWithdraw(calls[i]);
+            totalWithdrawAmount += calls[i].withdrawAmount;
         }
+        (bool success, ) = to.call{value: totalWithdrawAmount}("");
+        require(success, "Withdraw failed");
     }
 
-    function _singleWithdraw(WithdrawCall calldata call, address to) internal {
+    function _singleWithdraw(WithdrawCall calldata call) internal {
         // to be implemented
         // get all the inputs validated
         // verify the proof
@@ -390,7 +422,9 @@ contract PrivatePool {
                 (call.enabled[i] * (1 - call.enabled[i])) == 0,
                 "Invalid enabled flag"
             );
+            if (call.enabled[i] == 0) continue;
 
+            require(call.poolIds[i] < pools.length, "Invalid poolId");
             Pool storage p = pools[call.poolIds[i]];
             require(p.validRoot[call.roots[i]], "Invalid root");
 
@@ -398,6 +432,19 @@ contract PrivatePool {
                 !nullifierSpent[call.nullifiers[i]],
                 "Nullifier already exists"
             );
+            for (uint8 j = 0; j < i; j++) {
+                if (call.enabled[j] == 0) continue;
+
+                require(
+                    call.nullifiers[i] != call.nullifiers[j],
+                    "Duplicate nullifier"
+                );
+            }
+        }
+
+        //duplicate commitment check
+        if (call.C1 != ZERO_COMMITMENT && call.C2 != ZERO_COMMITMENT) {
+            require(call.C1 != call.C2, "Duplicate commitments");
         }
 
         // for zk proof rquired public inputs:
@@ -453,6 +500,10 @@ contract PrivatePool {
         // add nullifiers to the pool
         for (uint8 i = 0; i < MAX_INPUTS; i++) {
             if (call.enabled[i] == 0) continue;
+            require(
+                !nullifierSpent[call.nullifiers[i]],
+                "Nullifier already exists"
+            );
             nullifierSpent[call.nullifiers[i]] = true;
             emit NullifierSpent(call.nullifiers[i]);
         }
@@ -469,7 +520,7 @@ contract PrivatePool {
                 enc = call.encryptedNote1;
             else if (insertedNotes[i].commitment == call.C2)
                 enc = call.encryptedNote2;
-            else revert("Unkown commiment");
+            else revert("Unknown commiment");
 
             emit NoteCreated(
                 insertedNotes[i].poolId,
@@ -489,6 +540,7 @@ contract PrivatePool {
     function _updatePool(Pool storage p, bytes32 commitment) internal {
         bytes32 current = commitment;
         uint256 idx = p.nextIdx;
+        require(p.nextIdx < MAX_LEAF, "Pool full");
         p.nextIdx++; // update the next index
         // compute the root
         for (uint16 i = 0; i < TREE_DEPTH; i++) {
@@ -497,11 +549,11 @@ contract PrivatePool {
                 // even -> the current one is left
                 // so add it to the subtree, compute hash with zero[i](i.e Zi -> refere notes/filled_subtrees.txt)
                 p.filledSubtrees[i] = current;
-                current = posidon.hash(current, p.zeros[i]);
+                current = poseidon.hash(current, p.zeros[i]);
             } else {
                 // odd -> the current one is right
                 // so hash it with present value of the subtree
-                current = posidon.hash(p.filledSubtrees[i], current);
+                current = poseidon.hash(p.filledSubtrees[i], current);
             }
             idx >>= 1; // shifts 1 bit
         }
@@ -528,12 +580,13 @@ contract PrivatePool {
                 continue;
             }
 
-            uint32 left = uint32(remaining - idx); //
+            uint32 left = uint32(total - idx); // how many left to be inserted
             uint32 toInsert = remaining < left ? remaining : left;
 
             // insert leafs without pushing the root here
             for (uint8 i = 0; i < toInsert; i++) {
                 bytes32 C = commitments[idx++]; // commitment
+                require(!commitmentExists[C], "Commitment already exists");
                 commitmentExists[C] = true; //add commitment to commitment pool
                 // update pool for the commitment
                 _updatePool(pool, C);
