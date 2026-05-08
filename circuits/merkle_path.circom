@@ -3,13 +3,10 @@ pragma circom 2.1.0;
 include "../node_modules/circomlib/circuits/poseidon.circom";
 
 template MerklePath(depth){
-    // public inputs
-    signal input root;
-    // private inputs
     signal input leaf;
     signal input pathElements[depth];
     signal input pathIndices[depth];
-
+    signal output computedRoot;
 
     signal cur[depth + 1];
     cur[0] <== leaf;
@@ -29,7 +26,7 @@ template MerklePath(depth){
         // if idx == 1:
         // left = sibling
         // right = cur
-        
+
         left <== (1 - pathIndices[i]) * cur[i] +  pathIndices[i] * pathElements[i];
         right <== pathIndices[i] * cur[i] + (1 - pathIndices[i]) * pathElements[i];
 
@@ -38,7 +35,6 @@ template MerklePath(depth){
 
         cur[i + 1] <== hasher.out;
     }
-    cur[depth] === root;
-}
 
-component main { public [ root ]} = MerlePath(20);
+    computedRoot <== cur[depth];
+}
