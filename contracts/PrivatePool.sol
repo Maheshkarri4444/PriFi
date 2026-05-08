@@ -194,7 +194,7 @@ contract PrivatePool {
         uint256[2] a;
         uint256[2][2] b;
         uint256[2] c;
-        //public inputs for zkproof
+        //input details
         uint8[MAX_INPUTS] enabled; // decides wether input at index is present or not
         bytes32[MAX_INPUTS] roots; // tree roots which the respective commiment belongs to.
         uint256[MAX_INPUTS] poolIds; // poolid of that root
@@ -340,6 +340,30 @@ contract PrivatePool {
                 enc
             );
         }
+    }
+
+    // withdraw
+    /**
+     * input commiments are surrendered
+     * and the value of those inputs is transferred to the "To" account.
+     * in withdraw also we need 2 extra commitments because 1. change 2. relayer
+     */
+
+    struct WithdrawCall {
+        // zkproof
+        uint256[2] a;
+        uint256[2][2] b;
+        uint256[2] c;
+        // input details
+        uint8[MAX_INPUTS] enabled; // decides that input presence
+        bytes32[MAX_INPUTS] roots; // roots of the commitments
+        uint256[MAX_INPUTS] poolIds; // pool ids of the commitments
+        bytes32[MAX_INPUTS] nullifiers; // nullifiers of that commitments
+        // output details
+        bytes32 C1; //change commitment
+        bytes32 C2; //relayer commitment
+        bytes encryptedNote1; // change encrypted note
+        bytes encryptedNote2; // relayer encrypted note
     }
 
     // helper functions

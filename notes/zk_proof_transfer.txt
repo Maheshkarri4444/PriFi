@@ -1,31 +1,168 @@
-- Verify ownership:
+Core Logic:
+- The circuit proves that:
+    - the sender owns all consumed input notes
+    - input notes exist in the Merkle tree
+    - nullifiers are correctly generated
+    - output notes are correctly constructed
+    - total input value equals total output value
+
+Ownership:
+- The circuit verifies ownership using:
+
     pk = Poseidon(sk)
 
-- Recompute input note commitments:
-    C_in = Poseidon(amount_in, r_in, pk)
+Meaning:
+- Only the owner with the correct secret key can spend notes.
 
-- Verify Merkle inclusion:
-    Each input note must belong to the Merkle tree using Merkle paths.
+--------------------------------------------------
+Public Inputs:
+--------------------------------------------------
 
-- Verify nullifiers:
-    nullifier = Poseidon(C_in, r_in, sk)
+Input Section:
 
-- Prevent double spends:
-    Public nullifiers ensure notes cannot be reused.
+- enabled[max_inputs]
+    - Flags indicating whether an input slot is active.
+    - 1 = real input note
+    - 0 = dummy input slot
 
-- Handle dummy inputs:
-    enabled[i] decides whether an input slot is active or ignored.
+- roots[max_inputs]
+    - Merkle roots used to prove note inclusion.
 
-- Compute total input balance:
-    Sum all enabled input note amounts.
+- nullifiers[max_inputs]
+    - Unique spend identifiers preventing double spending.
 
-- Create output commitments:
-    C_out = Poseidon(amount, randomness, receiverPk)
+Output Section:
 
-- Generate:
-    - receiver note
-    - change note
-    - relayer fee note
+- output_enabled[3]
+    - Flags indicating whether an output slot is active.
 
-- Enforce balance conservation:
-    sumInputs = a1 + a2 + a3
+- c_outs[3]
+    - Commitments of newly created output notes.
+
+--------------------------------------------------
+Private Inputs:
+--------------------------------------------------
+
+Ownership:
+
+- sk
+    - Secret spending key of the wallet.
+
+- pk
+    - zk public key derived from the secret key.
+
+--------------------------------------------------
+Input Notes:
+--------------------------------------------------
+
+- c_ins[max_inputs]
+    - Input note commitments being spent.
+
+- a_ins[max_inputs]
+    - Amounts stored inside input notes.
+
+- r_ins[max_inputs]
+    - Randomness used while creating input commitments.
+
+Merkle Proof Data:
+
+- pathElements[max_inputs][depth]
+    - Sibling hashes required for Merkle proof verification.
+
+- pathIndices[max_inputs][depth]
+    - Left/right directions used while traversing the tree.
+
+--------------------------------------------------
+Output Notes:
+--------------------------------------------------
+
+- a_outs[3]
+    - Amounts stored in output notes.
+
+- r_outs[3]
+    - Randomness used while creating output commitments.
+
+- receivers[3]
+    - Receiver zk public keys owning output notes.
+
+--------------------------------------------------
+Input Commitment Construction:
+--------------------------------------------------
+
+- Each input commitment is reconstructed using:
+
+    c_in = Poseidon(amount, randomness, owner_pk)
+
+Meaning:
+- The circuit verifies that the provided note data
+  actually matches the input commitment.
+
+--------------------------------------------------
+Merkle Inclusion Verification:
+--------------------------------------------------
+
+- Each input note is verified against a Merkle root.
+
+Meaning:
+- The circuit proves that the note exists inside
+  the shielded pool state tree.
+
+--------------------------------------------------
+Nullifier Construction:
+--------------------------------------------------
+
+- Each nullifier is generated using:
+
+    nullifier = Poseidon(c_in, r_in, sk)
+
+Meaning:
+- Every spend produces a unique identifier.
+- Prevents double spending of notes.
+
+--------------------------------------------------
+Output Commitment Construction:
+--------------------------------------------------
+
+- Each output note is constructed using:
+
+    c_out = Poseidon(amount, randomness, receiver_pk)
+
+Meaning:
+- Creates new private notes for receivers.
+
+--------------------------------------------------
+Balance Constraint:
+--------------------------------------------------
+
+- The circuit enforces:
+
+    totalInputs = totalOutputs
+
+Meaning:
+- No value can be created or destroyed.
+- All transferred value is conserved privately.
+
+--------------------------------------------------
+Enabled Flag Constraint:
+--------------------------------------------------
+
+- Every enabled flag satisfies:
+
+    enabled * (1 - enabled) = 0
+
+Meaning:
+- Flags can only be:
+    - 0
+    - 1
+
+--------------------------------------------------
+Dummy Input Support:
+--------------------------------------------------
+
+- Disabled inputs are ignored using:
+
+    enabled[i] * value
+
+Meaning:
+- The circuit supports fixed-size inputs while
+  allowing fewer actual notes to be spent.
