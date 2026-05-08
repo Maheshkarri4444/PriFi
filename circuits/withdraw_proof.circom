@@ -25,8 +25,8 @@ template WithdrawProof(max_inputs, depth) {
     // Requires: enabled[], c_ins[], a_ins[], r_ins[] , pk; roots, pathElements[], pathIndices[] 
     // we need recompute nullifiers ✅
     // Requires: c_ins[],r_ins[],sk
-    // we need to check the 2 output commitments validity
-    // Requires: out_enabled[] , C_outs[], r_outs[] , a_outs[]
+    // we need to check the 2 output commitments validity ✅
+    // Requires: out_enabled[] , C_outs[], r_outs[] , a_outs[] , receivers[]
     // we need compute sumInputs = sumOutputs
     // Requires: Sum(a_ins[]) == Sum(withdrawAmount + Sum(a_outs)) 
 
@@ -53,9 +53,24 @@ template WithdrawProof(max_inputs, depth) {
     // nullifiers 
     signal input nullifiers[max_inputs];//public
 
+    signal sum[max_inputs + 1]; // sum[max_inputs] will be sum of inputs
+    sum[0] <== 0;
+    signal x[max_inputs];
     for(var i = 0; i < max_inputs ; i++){
         // enable constraint
         enabled[i] * (1 - enabled[i]) === 0;
+
+        // ** wrong ways to find sum **
+
+        // // sum <== sum + a_ins[i] ❌ because its circular (Note: signal is wire not value)
+
+        // // signal x;
+        // // x <== sum; 
+        // // sum <== x + a_ins[i] ❌ circular again
+
+        // correct way to find sum
+        x[i] <== enabled[i] * a_ins[i];
+        sum[i + 1] <== sum[i] + x[i];
 
         //input commitment computation checkup
         component comHasher = Poseidon(3);
@@ -87,5 +102,48 @@ template WithdrawProof(max_inputs, depth) {
     }
 
     // OUTPUTS VALIDATION
-    
+
+    // withdraw amount
+    signal input withdrawAmount;
+
+    // output commitments check
+    signal input out_enabled[2]; //public
+    signal input a_outs[2]; // private
+    signal input r_outs[2]; // private
+    signal input c_outs[2]; // public
+    signal input receivers[2]; // private
+
+    signal outSum[3];
+    signal y[2];
+    outSum <== 0;
+
+    for(var i = 0; i < 2; i++){
+        // output enabled signal
+        out_enabled[i] * (1 - out_enabled[i]) === 0;
+
+        y[i] <== out_enabled[i] * a_outs[i];
+        outSum[i + 1] <== outSum[i] + y[i];
+
+        // output commitment computation checkup
+        component outHasher = Poseidon(3);
+        outHasher.inputs[0] = a_outs[i];
+        outHasher.inputs[1] = r_outs[i];
+        outHasher.inputs[2] = receivers[i];
+
+        //constraint
+        out_enabled[i] * (outHasher.out - c_outs[i]) === 0;
+    }
+ 
+    // Input Summation == Output Summation constraint
+    sum[max_inputs] === outSum[2] + withdrawAmount;
+
 }
+
+component main {public [
+    enabled,
+    roots,
+    nullifiers,
+    withdrawAmount,
+    out_enabled,
+    c_outs,
+]} = WithdrawProof(4,20);
