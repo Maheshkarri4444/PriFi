@@ -8,7 +8,8 @@ include "../node_modules/circomlib/circuits/poseidon.circom";
  * Proves that deposited amount equals
  * the sum of committed note values.
  *
- * Supports up to 2 commitments.
+ * To understand the circuit
+ *      Refer: notes/zk_proof_depoist.txt 
  */
 
 
@@ -41,7 +42,7 @@ template DepositProof() {
     hasher2.inputs[1] = r2;
     hasher2.inputs[2] = pk2;
 
-    c1 === hasher2.out;
+    c2 === hasher2.out;
 
     depositAmount === a1 + a2; // sum of amounts must be equal to deposit
 }

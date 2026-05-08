@@ -1,0 +1,51 @@
+Core Logic:
+- The circuit proves that the publicly deposited ETH amount equals
+  the total value hidden inside the created private notes.
+
+Public Inputs:
+- depositAmount
+    - Total ETH amount deposited into the shielded pool.
+
+- c1
+    - Commitment hash of the first private note.
+
+- c2
+    - Commitment hash of the second private note
+      (usually relayer/protocol fee note).
+
+Private Inputs:
+
+First Note:
+- a1
+    - Amount stored in the first private note.
+
+- r1
+    - Randomness used to make the commitment unlinkable.
+
+- pk1
+    - Receiver zk public key that owns the note.
+
+Second Note:
+- a2
+    - Amount stored in the second private note.
+
+- r2
+    - Randomness for the second commitment.
+
+- pk2
+    - Receiver public key for the second note.
+
+Commitment Construction:
+- Each private note is converted into a commitment using Poseidon hashing:
+
+    c1 = Poseidon(a1, r1, pk1)
+    c2 = Poseidon(a2, r2, pk2)
+
+Balance Constraint:
+- The circuit enforces:
+
+    depositAmount = a1 + a2
+
+Meaning:
+- Total deposited ETH must exactly equal the sum of all created private notes.
+

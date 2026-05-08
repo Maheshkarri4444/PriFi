@@ -192,7 +192,7 @@ contract PrivatePool {
         uint256[2] a;
         uint256[2][2] b;
         uint256[2] c;
-        //public inputs of zkproof
+        //public inputs for zkproof
         uint8[MAX_INPUTS] enabled; // decides wether input at index is present or not
         bytes32[MAX_INPUTS] roots; // tree roots which the respective commiment belongs to.
         uint256[MAX_INPUTS] poolIds; // poolid of that root
@@ -205,6 +205,7 @@ contract PrivatePool {
         bytes encryptedNote2; // change encrypted note
         bytes encryptedNote3; // relayer encrypted note
     }
+
     /*
      * - Each TransferCall consumes between 1 and MAX_INPUTS private input notes
      * - Multiple TransferCalls can be executed atomically in a single transaction
@@ -213,6 +214,25 @@ contract PrivatePool {
      * - This enables note aggregation and large fan-in transfers
      *   while remaining atomic and private
      */
+
+    /**
+     * Zk proof for transfer
+     * Consumes up to MAX_INPUTS (e.g. 16) private input notes
+     * belonging to a single owner and creates up to 3 new
+     * private output notes in one proof.
+     *
+     * For exact understanding Refer: notes/zk_proof_transfer.txt
+     */
+
+    function transfer(TransferCall[] memory calls) external payable {
+        for (uint8 i = 0; i < calls.length; i++) {
+            // call single transfer function
+        }
+    }
+
+    function _singleTransfer(TransferCall memory call) internal {
+        //
+    }
 
     // helper functions
     struct InsertedNote {
@@ -294,4 +314,6 @@ contract PrivatePool {
         p.validRoot[newRoot] = true; // new root in valid roots
         p.rootPtr = (p.rootPtr + 1) % ROOT_HISTORY_SIZE; // increament root ptr (i.e where next root will be inserted)
     }
+
+    receive() external payable {}
 }

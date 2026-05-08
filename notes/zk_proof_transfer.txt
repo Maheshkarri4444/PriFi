@@ -1,0 +1,31 @@
+- Verify ownership:
+    pk = Poseidon(sk)
+
+- Recompute input note commitments:
+    C_in = Poseidon(amount_in, r_in, pk)
+
+- Verify Merkle inclusion:
+    Each input note must belong to the Merkle tree using Merkle paths.
+
+- Verify nullifiers:
+    nullifier = Poseidon(C_in, r_in, sk)
+
+- Prevent double spends:
+    Public nullifiers ensure notes cannot be reused.
+
+- Handle dummy inputs:
+    enabled[i] decides whether an input slot is active or ignored.
+
+- Compute total input balance:
+    Sum all enabled input note amounts.
+
+- Create output commitments:
+    C_out = Poseidon(amount, randomness, receiverPk)
+
+- Generate:
+    - receiver note
+    - change note
+    - relayer fee note
+
+- Enforce balance conservation:
+    sumInputs = a1 + a2 + a3
