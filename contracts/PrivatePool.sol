@@ -364,6 +364,26 @@ contract PrivatePool {
         bytes32 C2; //relayer commitment
         bytes encryptedNote1; // change encrypted note
         bytes encryptedNote2; // relayer encrypted note
+        //withdraw amount for this call
+        uint256 withdrawAmount;
+    }
+
+    function withdraw(
+        WithdrawCall[] calldata calls,
+        address to
+    ) external payable {
+        for (uint8 i = 0; i < calls.length; i++) {
+            _singleWithdraw(calls[i], to);
+        }
+    }
+
+    function _singleWithdraw(WithdrawCall calldata call, address to) internal {
+        // to be implemented
+        // get all the inputs validated
+        // verify the proof
+        // add all the nullifiers to the pool
+        // add new commitements to the pool
+        // transfer
     }
 
     // helper functions

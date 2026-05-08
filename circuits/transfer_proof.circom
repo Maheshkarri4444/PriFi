@@ -15,6 +15,8 @@ include "./merkle_path.circom";
  *
  * All value conservation, ownership checks, Merkle inclusion,
  * and nullifier correctness are enforced inside the ZK circuit.
+ *
+ * Refer: notes/zk_proof_transfer.txt
  */
 
 
