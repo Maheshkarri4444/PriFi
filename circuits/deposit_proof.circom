@@ -46,3 +46,5 @@ template DepositProof() {
 
     depositAmount === a1 + a2; // sum of amounts must be equal to deposit
 }
+
+component main {public [depositAmount, c1 , c2]} = DepositProof();

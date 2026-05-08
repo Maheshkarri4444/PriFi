@@ -146,11 +146,11 @@ contract PrivatePool {
 
         // commitments already exists?
         require(
-            commitmentExists[C1],
+            !commitmentExists[C1],
             "Commitment 1 already existing, change r value"
         );
         require(
-            commitmentExists[C2],
+            !commitmentExists[C2],
             "Commitment 2 already existing, change r value"
         );
         // public signals
@@ -226,12 +226,80 @@ contract PrivatePool {
 
     function transfer(TransferCall[] memory calls) external payable {
         for (uint8 i = 0; i < calls.length; i++) {
-            // call single transfer function
+            _singleTransfer(calls[i]);
         }
     }
 
     function _singleTransfer(TransferCall memory call) internal {
-        //
+        // validate the inputs
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            require(
+                call.enabled[i] * (1 - call.enabled[i]) == 0,
+                "Invalid enable flag"
+            );
+            if (call.enabled[i] == 0) {
+                continue;
+            }
+            Pool storage p = pools[call.poolIds[i]];
+            require(p.validRoot[call.roots[i]], "Invalid root");
+
+            require(
+                !nullifierSpent[call.nullifiers[i]],
+                "Nullifier already spent"
+            );
+        }
+
+        // zkproof
+
+        //required public signals
+        // enabled,  - MAX_INPUTS
+        // roots,   - MAX_INPUTS
+        // nullifiers,  - MAX_INPUTS
+        // output_enabled, - 3
+        // c_outs,  - 3
+
+        uint256[] memory publicSignals = new uint256[](MAX_INPUTS * 3 + 3 + 3);
+        uint8 idx = 0;
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            publicSignals[idx++] = uint256(call.enabled[i]);
+        }
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            publicSignals[idx++] = uint256(call.roots[i]);
+        }
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            publicSignals[idx++] = uint256(call.nullifiers[i]);
+        }
+
+        // output enabled
+        if (call.C1 != ZERO_COMMITMENT) {
+            require(!commitmentExists[call.C1], "Commitment 1 already exists");
+            publicSignals[idx++] = uint256(1);
+        } else {
+            publicSignals[idx++] = uint256(0);
+        }
+        if (call.C2 != ZERO_COMMITMENT) {
+            require(!commitmentExists[call.C2], "Commitment 2 already exists");
+            publicSignals[idx++] = uint256(1);
+        } else {
+            publicSignals[idx++] = uint256(0);
+        }
+        if (call.C3 != ZERO_COMMITMENT) {
+            require(!commitmentExists[call.C3], "Commitment 3 already exists");
+            publicSignals[idx++] = uint256(1);
+        } else {
+            publicSignals[idx++] = uint256(0);
+        }
+
+        //c_outs
+        publicSignals[idx++] = uint256(call.C1);
+        publicSignals[idx++] = uint256(call.C2);
+        publicSignals[idx++] = uint256(call.C3);
+
+        // proof verification
+        require(
+            transferVerifier.verifyProof(call.a, call.b, call.c, publicSignals),
+            "Transfer proof verification failed"
+        );
     }
 
     // helper functions
