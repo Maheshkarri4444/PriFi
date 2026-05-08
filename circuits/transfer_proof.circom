@@ -40,7 +40,7 @@ template TransferProof(max_inputs,  depth) {
     // we need sum of inputs to check sumInputs == sumOutputs✅
 
     // enabled flag
-    signal input enabled[max_inpts]; //public (0 or 1)
+    signal input enabled[max_inputs]; //public (0 or 1)
 
     // input commitments validity check
     signal input c_ins[max_inputs]; // private
@@ -68,21 +68,21 @@ template TransferProof(max_inputs,  depth) {
         enabled[i] * (1 - enabled[i]) === 0;
 
         // amount summation
-        x[i] = enabled[i] * a_ins[i];
-        sum[i + 1] = sum[i] + x[i];
+        x[i] <== enabled[i] * a_ins[i];
+        sum[i + 1] <== sum[i] + x[i];
 
         // input commitment computation checkup
         component hasher = Poseidon(3);
 
-        hasher.inputs[0] = a_ins[i];
-        hasher.inputs[1] = r_ins[i];
-        hasher.inputs[2] = pk;
+        hasher.inputs[0] <== a_ins[i];
+        hasher.inputs[1] <== r_ins[i];
+        hasher.inputs[2] <== pk;
 
         enabled[i] * (c_ins[i] - hasher.out) === 0; //commitment checkup
 
         // root validity check for that commitment
         component merklePath = MerklePath(depth);
-        merklePath.leaf = c_ins[i];
+        merklePath.leaf <== c_ins[i];
         for (var j = 0; j < depth ; j++ ){
             merklePath.pathIndices[j] <== pathIndices[i][j];
             merklePath.pathElements[j] <== pathElements[i][j];
@@ -93,8 +93,8 @@ template TransferProof(max_inputs,  depth) {
         // nullifier computation checkup for that commitment
         // nullifier -> poseidon(c_in,r_in,sk) 
         component nullHasher = Poseidon(3);
-        nullHasher.inputs[0] = c_in[i]; 
-        nullHasher.inputs[1] = r_in[i]; // "r" used to create that commitment
+        nullHasher.inputs[0] = c_ins[i]; 
+        nullHasher.inputs[1] = r_ins[i]; // "r" used to create that commitment
         nullHasher.inputs[2] = sk;  // why not pk? because the sender can compute the nullifier.
 
         enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
@@ -108,7 +108,7 @@ template TransferProof(max_inputs,  depth) {
     // sum of outputs ✅
 
     signal input output_enabled[3]; // public
-    signal input c_out[3]; // public
+    signal input c_outs[3]; // public
     signal input a_outs[3]; // private
     signal input r_outs[3]; //private
     signal input receivers[3]; //private
@@ -117,6 +117,10 @@ template TransferProof(max_inputs,  depth) {
     out_sum[0] <== 0;
     signal y[3];
     for (var i = 0 ; i < 3 ; i++){
+        // output enabled flag constraint
+        output_enabled[i] * (1 - output_enabled[i]) === 0;
+
+        //output commitment checkup
         component outHasher = Poseidon(3);
         outHasher.inputs[0] = a_outs[i];
         outHasher.inputs[1] = r_outs[i];
@@ -129,6 +133,14 @@ template TransferProof(max_inputs,  depth) {
     }
 
     // sum of inputs === sum of outputs
-    sum[max_inputs] === out_sum[4];
-    
+    sum[max_inputs] === out_sum[3];
+
 } 
+
+component main {public [ 
+    enabled,
+    roots,
+    nullifiers,
+    output_enabled,
+    c_outs,
+]} = TransferProof(4,20);
