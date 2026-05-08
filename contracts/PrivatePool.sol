@@ -64,6 +64,8 @@ contract PrivatePool {
     event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
     // we dont store the encryptedNotes on chain ( storage gas ) instead we emit them as events
     event NoteCreated(uint256 poolId, bytes32 commitment, bytes encryptedNote);
+    // nullfier spent
+    event NullifierSpent(bytes32 nullifier);
 
     constructor(
         address _depositVerifier,
@@ -270,26 +272,31 @@ contract PrivatePool {
             publicSignals[idx++] = uint256(call.nullifiers[i]);
         }
 
+        uint8 cmxCount = 0;
+        bytes32[] memory tempCmx = new bytes32[](3);
         // output enabled
         if (call.C1 != ZERO_COMMITMENT) {
             require(!commitmentExists[call.C1], "Commitment 1 already exists");
             publicSignals[idx++] = uint256(1);
+            tempCmx[cmxCount++] = call.C1;
         } else {
             publicSignals[idx++] = uint256(0);
         }
         if (call.C2 != ZERO_COMMITMENT) {
             require(!commitmentExists[call.C2], "Commitment 2 already exists");
             publicSignals[idx++] = uint256(1);
+            tempCmx[cmxCount++] = call.C2;
         } else {
             publicSignals[idx++] = uint256(0);
         }
         if (call.C3 != ZERO_COMMITMENT) {
             require(!commitmentExists[call.C3], "Commitment 3 already exists");
             publicSignals[idx++] = uint256(1);
+            tempCmx[cmxCount++] = call.C3;
         } else {
             publicSignals[idx++] = uint256(0);
         }
-
+        require(cmxCount != 0, "No commitments present in this Transfer call");
         //c_outs
         publicSignals[idx++] = uint256(call.C1);
         publicSignals[idx++] = uint256(call.C2);
@@ -300,6 +307,39 @@ contract PrivatePool {
             transferVerifier.verifyProof(call.a, call.b, call.c, publicSignals),
             "Transfer proof verification failed"
         );
+
+        bytes32[] memory commitments = new bytes32[](cmxCount);
+        for (uint8 i = 0; i < cmxCount; i++) {
+            commitments[i] = tempCmx[i];
+        }
+
+        // add nullifiers to the pool
+        for (uint8 i = 0; i < MAX_INPUTS; i++) {
+            if (call.enabled[i] == 0) continue;
+            nullifierSpent[call.nullifiers[i]] = true;
+            emit NullifierSpent(call.nullifiers[i]);
+        }
+
+        // add commitments to the pool
+        InsertedNote[] memory notesInserted = _insertBatch(commitments);
+        for (uint8 i = 0; i < notesInserted.length; i++) {
+            bytes memory enc;
+
+            if (notesInserted[i].commitment == call.C1)
+                enc = call.encryptedNote1;
+            else if (notesInserted[i].commitment == call.C2)
+                enc = call.encryptedNote2;
+            else if (notesInserted[i].commitment == call.C3)
+                enc = call.encryptedNote3;
+            else revert("Unkown commitment");
+
+            // emit the poolId , cmx , encryptedNote
+            emit NoteCreated(
+                notesInserted[i].poolId,
+                notesInserted[i].commitment,
+                enc
+            );
+        }
     }
 
     // helper functions
