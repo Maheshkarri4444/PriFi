@@ -19,14 +19,34 @@ include "./merkle_path.circom";
  */
 
 template WithdrawProof(max_inputs, depth) {
-    // we need to check the ownership 
-    // Requires: Pk, Sk
+    // we need to check the ownership ✅
+    // Requires: Pk, Sk 
     // we need to check the input commitments validity
-    // Requires: enabled[], c_ins[], a_ins[], r_ins[] , pk ,  
+    // Requires: enabled[], c_ins[], a_ins[], r_ins[] , pk; roots, pathElements[], pathIndices[] 
     // we need recompute nullifiers
     // Requires: c_ins[],r_ins[],sk
     // we need to check the 2 output commitments validity
     // Requires: out_enabled[] , C_outs[], r_outs[] , a_outs[]
     // we need compute sumInputs = sumOutputs
     // Requires: Sum(a_ins[]) == Sum(withdrawAmount + Sum(a_outs)) 
+
+    // ownership
+    signal input pk; // private
+    signal input sk; // private
+
+    // owndership check
+    component ownHasher = Poseidon(1);
+    ownHasher.inputs[1] <== sk;
+    pk === ownHasher.out;
+
+    // commitments validity required feilds
+    signal input enabled[max_inputs];  // 0 or 1
+    signal input c_ins[max_inputs]; // cmx
+    signal input a_ins[max_inputs]; // amount in for that cmx
+    signal input r_ins[max_inputs]; // "r" used to create that cmx
+    signal input roots[max_inputs]; // root for the merkle tree that cmx present in
+    signal input pathElements[max_inputs][depth]; // path elements to the root
+    signal input pathIndices[max_inputs][depth]; // path indices to the root
+
+
 }
