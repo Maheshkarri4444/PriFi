@@ -29,11 +29,15 @@ template TransferProof(max_inputs,  depth) {
     ownershipHasher.inputs[0] = sk;
     pk === ownershipHasher.out; // zk publickey ownership constraint
 
-    // we need max_inpts of enalbled flags ✅
-    // we need max_inputs of c_in for commitments ✅
-    // we need a_in, r_in for every c_in ✅
-    // max_inputs of roots , path_indices , path_elements ✅
-    // we have max_inputs of nullifiers -> poseidon(c_in,r_in,sk) ✅
+
+    /// INPUTS SECTION
+
+    // we need max_inpts of enalbled flags to check existence ✅
+    // we need max_inputs of c_in i.e commitments ✅
+    // we need a_in, r_in for every c_in for computation checkup ✅ 
+    // max_inputs of roots , path_indices , path_elements i.e for every commitment to check leaf validity in the tree ✅ 
+    // we need max_inputs of nullifiers to check nullifier == poseidon(c_in,r_in,sk) ✅
+    // we need sum of inputs to check sumInputs == sumOutputs✅
 
     // enabled flag
     signal input enabled[max_inpts]; //public (0 or 1)
@@ -43,17 +47,29 @@ template TransferProof(max_inputs,  depth) {
     signal input a_ins[max_inputs]; // private
     signal input r_ins[max_inputs]; // private 
 
-    // roots validity check
-    signal input roots[max_inputs];
-    signal input pathElements[max_inputs][depth];
-    signal input pathIndices[max_inputs][depth];
+    // cmx validity check in merkle tree
+    signal input roots[max_inputs]; // public
+    signal input pathElements[max_inputs][depth]; // private
+    signal input pathIndices[max_inputs][depth];  // private
 
     // nullifier validity check
-    signal input nullifiers[max_inputs];
+    signal input nullifiers[max_inputs]; // public
+
+    // compute sum of inputs
+    signal sum[max_inputs + 1]; 
+    sum[0] <== 0;  
+    signal x[max_inputs];
+
+    // note: in circom we cannot to circular addition like sum <== sum + amount;
+    //       thats why we are using sum array.
 
     for (var i = 0; i < max_inputs; i++) {
         // enable flag constraint
         enabled[i] * (1 - enabled[i]) === 0;
+
+        // amount summation
+        x[i] = enabled[i] * a_ins[i];
+        sum[i + 1] = sum[i] + x[i];
 
         // input commitment computation checkup
         component hasher = Poseidon(3);
@@ -84,9 +100,35 @@ template TransferProof(max_inputs,  depth) {
         enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
 
     }
+
+    // OUTPUTS SECTION
+    // we need enabled flags (i.e only 3) 1.receiver 2.change 3.relayer ✅
+    // we need output commitments ✅
+    // we need a_out , r_out , receiver to check commitment validity ✅
+    // sum of outputs ✅
+
+    signal input output_enabled[3]; // public
+    signal input c_out[3]; // public
+    signal input a_outs[3]; // private
+    signal input r_outs[3]; //private
+    signal input receivers[3]; //private
+
+    signal out_sum[4];
+    out_sum[0] <== 0;
+    signal y[3];
+    for (var i = 0 ; i < 3 ; i++){
+        component outHasher = Poseidon(3);
+        outHasher.inputs[0] = a_outs[i];
+        outHasher.inputs[1] = r_outs[i];
+        outHasher.inputs[2] = receivers[i];
+
+        y[i] <== output_enabled[i] * a_outs[i];
+        out_sum[i + 1] <== out_sum[i] + y[i];
+
+        output_enabled[i] * (c_out[i] - outHasher.out) === 0;        
+    }
+
+    // sum of inputs === sum of outputs
+    sum[max_inputs] === out_sum[4];
     
-
-
-
-
 } 
