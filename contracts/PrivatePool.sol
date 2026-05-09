@@ -64,6 +64,7 @@ contract PrivatePool {
 
     // relayer
     address public immutable relayer;
+    uint256 public immutable relayerZkPubkey;
 
     // events
     event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
@@ -77,13 +78,15 @@ contract PrivatePool {
         address _transferVerifier,
         address _withdrawVerifier,
         address _poseidon,
-        address _relayer
+        address _relayer,
+        uint256 _relayerZkPubkey
     ) {
         depositVerifier = IVerifier(_depositVerifier);
         transferVerifier = IVerifier(_transferVerifier);
         withdrawVerifier = IVerifier(_withdrawVerifier);
         poseidon = IPoseidon(_poseidon);
         relayer = _relayer;
+        relayerZkPubkey = _relayerZkPubkey;
         _createPool();
     }
 
@@ -165,12 +168,12 @@ contract PrivatePool {
         );
         // public signals
         // deposit amount
-        // pk2 (relayer)
+        // pk2 (relayerZkPubkey)
         // c1
         // c2
         uint256[] memory publicSignals = new uint256[](4);
         publicSignals[0] = msg.value;
-        publicSignals[1] = uint256(uint160(relayer));
+        publicSignals[1] = relayerZkPubkey;
         publicSignals[2] = uint256(C1);
         publicSignals[3] = uint256(C2);
 
@@ -298,7 +301,7 @@ contract PrivatePool {
             1 + MAX_INPUTS * 3 + 3 + 3
         );
         uint8 idx = 0;
-        publicSignals[idx++] = uint256(uint160(relayer));
+        publicSignals[idx++] = relayerZkPubkey;
         for (uint8 i = 0; i < MAX_INPUTS; i++) {
             publicSignals[idx++] = uint256(call.enabled[i]);
         }
@@ -475,7 +478,7 @@ contract PrivatePool {
             2 + MAX_INPUTS * 3 + 1 + (2 * 2)
         );
         publicSignals[0] = uint256(uint160(to));
-        publicSignals[1] = uint256(uint160(relayer));
+        publicSignals[1] = relayerZkPubkey;
 
         // enabled roots nullifier
         for (uint8 i = 2; i < MAX_INPUTS + 2; i++) {
