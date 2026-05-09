@@ -1,0 +1,148 @@
+WithdrawProof Notes
+
+Purpose
+- Consumes private input notes owned by a user.
+- Withdraws ETH to a public Ethereum address.
+- Optionally creates:
+  - change note
+  - relayer fee note
+- Prevents double spending using nullifiers.
+
+
+Ownership Check
+- Inputs:
+  - pk
+  - sk
+- Verifies:
+  - pk == Poseidon(3, sk)
+- Ensures prover owns the notes.
+
+
+Input Notes Validation
+
+For each input note:
+
+1. Enabled Flag
+- enabled[i] must be:
+  - 0
+  - or 1
+- Allows unused dummy slots.
+
+2. Input Amount Summation
+- Computes total input amount.
+- Uses:
+  - x[i] = enabled[i] * a_ins[i]
+- Disabled notes contribute 0.
+
+3. Commitment Verification
+Recomputes commitment:
+- Poseidon(1, amount, randomness, pk)
+
+Checks:
+- recomputed commitment == provided commitment.
+
+4. Merkle Inclusion Proof
+- Verifies commitment exists in Merkle tree.
+- Uses:
+  - pathElements
+  - pathIndices
+- Recomputes root using MerklePath.
+
+5. Path Index Boolean Constraint
+Checks:
+- pathIndices[j] is either:
+  - 0
+  - or 1
+
+6. Root Validation
+Checks:
+- computed Merkle root == provided root.
+
+7. Nullifier Verification
+Recomputes nullifier:
+- Poseidon(2, commitment, randomness, sk)
+
+Checks:
+- recomputed nullifier == provided nullifier.
+
+
+Output Validation
+
+1. Withdraw Amount
+- Public ETH amount being withdrawn.
+
+2. Output Notes
+Supports up to:
+- 2 output notes
+  - change note
+  - relayer fee note
+
+3. Output Enabled Flags
+- out_enabled[i] must be:
+  - 0
+  - or 1
+
+4. Receiver Binding
+- receivers[0] == receiver
+- receivers[1] == relayer
+
+Ensures:
+- correct withdrawal recipient
+- correct relayer fee owner
+
+5. Output Commitment Verification
+Recomputes output commitments:
+- Poseidon(1, amount, randomness, receiver)
+
+Checks:
+- recomputed commitment == provided commitment.
+
+6. Output Amount Summation
+Computes:
+- total output amount
+
+Disabled outputs contribute:
+- 0
+
+
+Conservation Constraint
+Final constraint:
+- sum(inputs) == withdrawAmount + sum(outputs)
+
+Ensures:
+- no money created
+- no money destroyed
+
+
+Public Inputs
+- receiver
+- relayer
+- enabled[]
+- roots[]
+- nullifiers[]
+- withdrawAmount
+- out_enabled[]
+- c_outs[]
+
+These are visible on-chain.
+
+
+Private Inputs
+- secret key
+- amounts
+- randomness
+- Merkle paths
+- receivers
+- private commitments
+
+
+Domain Separators
+
+Ownership Hash
+- 3
+
+Commitment Hash
+- 1
+
+Nullifier Hash
+- 2
