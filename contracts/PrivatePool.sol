@@ -1,12 +1,29 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
-interface IVerifier {
+interface IDepositVerifier {
     function verifyProof(
         uint256[2] calldata a,
         uint256[2][2] calldata b,
         uint256[2] calldata c,
-        uint256[] calldata publicSignals
+        uint256[4] calldata publicSignals
+    ) external view returns (bool);
+}
+interface ITransferVerifier {
+    function verifyProof(
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[19] calldata publicSignals
+    ) external view returns (bool);
+}
+
+interface IWithdrawVerifier {
+    function verifyProof(
+        uint256[2] calldata a,
+        uint256[2][2] calldata b,
+        uint256[2] calldata c,
+        uint256[19] calldata publicSignals
     ) external view returns (bool);
 }
 
@@ -51,13 +68,13 @@ contract PrivatePool {
         bytes32(uint256(keccak256("ZERO_COMMITMENT")));
 
     //global state
-    mapping(bytes32 => bool) nullifierSpent;
-    mapping(bytes32 => bool) commitmentExists;
+    mapping(bytes32 => bool) public nullifierSpent;
+    mapping(bytes32 => bool) public commitmentExists;
 
     // verifiers
-    IVerifier public immutable depositVerifier;
-    IVerifier public immutable transferVerifier;
-    IVerifier public immutable withdrawVerifier;
+    IDepositVerifier public immutable depositVerifier;
+    ITransferVerifier public immutable transferVerifier;
+    IWithdrawVerifier public immutable withdrawVerifier;
 
     // poseidon
     IPoseidon public immutable poseidon;
@@ -81,9 +98,9 @@ contract PrivatePool {
         address _relayer,
         uint256 _relayerZkPubkey
     ) {
-        depositVerifier = IVerifier(_depositVerifier);
-        transferVerifier = IVerifier(_transferVerifier);
-        withdrawVerifier = IVerifier(_withdrawVerifier);
+        depositVerifier = IDepositVerifier(_depositVerifier);
+        transferVerifier = ITransferVerifier(_transferVerifier);
+        withdrawVerifier = IWithdrawVerifier(_withdrawVerifier);
         poseidon = IPoseidon(_poseidon);
         relayer = _relayer;
         relayerZkPubkey = _relayerZkPubkey;
@@ -168,14 +185,14 @@ contract PrivatePool {
         );
         // public signals
         // deposit amount
-        // pk2 (relayerZkPubkey)
         // c1
         // c2
-        uint256[] memory publicSignals = new uint256[](4);
+        // pk2 (relayerZkPubkey)
+        uint256[4] memory publicSignals;
         publicSignals[0] = msg.value;
-        publicSignals[1] = relayerZkPubkey;
-        publicSignals[2] = uint256(C1);
-        publicSignals[3] = uint256(C2);
+        publicSignals[1] = uint256(C1);
+        publicSignals[2] = uint256(C2);
+        publicSignals[3] = relayerZkPubkey;
 
         // in deposit we dont need to check merkle path
         // deposit zk , proves that the amounts that are in the commitments equals deposited amount
@@ -297,9 +314,7 @@ contract PrivatePool {
         // output_enabled, - 3
         // c_outs,  - 3
 
-        uint256[] memory publicSignals = new uint256[](
-            1 + MAX_INPUTS * 3 + 3 + 3
-        );
+        uint256[19] memory publicSignals;
         uint8 idx = 0;
         publicSignals[idx++] = relayerZkPubkey;
         for (uint8 i = 0; i < MAX_INPUTS; i++) {
@@ -474,9 +489,7 @@ contract PrivatePool {
             out_enabled,
             c_outs,
          */
-        uint256[] memory publicSignals = new uint256[](
-            2 + MAX_INPUTS * 3 + 1 + (2 * 2)
-        );
+        uint256[19] memory publicSignals;
         publicSignals[0] = uint256(uint160(to));
         publicSignals[1] = relayerZkPubkey;
 

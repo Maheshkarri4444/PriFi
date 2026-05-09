@@ -1,5 +1,5 @@
 const { ethers } = require("hardhat");
-
+const { expect } = require("chai");
 const snarkjs = require("snarkjs");
 
 const {
@@ -15,6 +15,12 @@ const {
     createCommitment
 } = require("../helpers/commitments");
 
+const circomlibjs = require("circomlibjs");
+
+const {
+    IncrementalMerkleTree
+} = require("@zk-kit/incremental-merkle-tree");
+
 
 
 // global relayer wallet
@@ -22,6 +28,9 @@ let relayerWallet;
 
 // global users wallets
 const userWallets = [];
+
+// poolId => merkle tree state
+const poolStates = {};
 
 
 // contract + signers
@@ -31,9 +40,54 @@ let relayerSigner;
 
 let userSigner;
 
+// tree helper function
+async function initializePool(poolId) {
+
+    // already initialized
+    if (poolStates[poolId]) {
+        return;
+    }
+
+    const poseidon =
+        await circomlibjs.buildPoseidon();
+
+    const hash = (inputs) => {
+
+        return BigInt(
+            poseidon.F.toString(
+                poseidon(inputs)
+            )
+        );
+    };
+
+    const ZERO_VALUE = BigInt(0);
+
+    const tree =
+        new IncrementalMerkleTree(
+            hash,
+            20,
+            ZERO_VALUE,
+            2
+        );
+
+    poolStates[poolId] = {
+
+        tree,
+
+        roots: [],
+
+        latestRoot: null,
+
+        leafToIndex: {}
+    };
+
+    console.log(`\nPool ${poolId} initialized`);
+}
+
 
 
 describe("PriFi Wallet Architecture", function () {
+    
 
     it("Should generate deterministic private wallets and zk keys", async function () {
 
@@ -95,8 +149,24 @@ describe("PriFi Wallet Architecture", function () {
         privatePool =
             await ethers.getContractAt(
                 "PrivatePool",
-                "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"
+                "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e"
             );
+        // console.log(
+        //     "Pool Address:",
+        //     privatePool.address
+        // );
+
+        // const code =
+        //     await ethers.provider.getCode(
+        //         privatePool.address
+        //     );
+
+        // console.log(
+        //     "Code Length:",
+        //     code.length
+        // );
+
+        // console.log(code);
     });
 
 
@@ -178,7 +248,236 @@ describe("PriFi Wallet Architecture", function () {
     });
 
 
+it("Should verify deposit proof directly", async function () {
 
+    const depositVerifier =
+    await ethers.getContractAt(
+        "DepositVerifier",
+        "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"
+    );
+
+    // -------------------------
+    // VALUES
+    // -------------------------
+
+    const depositAmount =
+        ethers.utils.parseEther("1");
+
+    const fee =
+        ethers.utils.parseEther("0.01");
+
+    const userAmount =
+        depositAmount.sub(fee);
+
+
+
+    // -------------------------
+    // RANDOMNESS
+    // -------------------------
+
+    const r1 =
+        ethers.BigNumber.from(
+            ethers.utils.randomBytes(31)
+        ).toString();
+
+    const r2 =
+        ethers.BigNumber.from(
+            ethers.utils.randomBytes(31)
+        ).toString();
+
+
+
+
+
+    // -------------------------
+    // USER + RELAYER
+    // -------------------------
+
+    const user =
+        userWallets[0];
+
+
+
+    // -------------------------
+    // COMMITMENTS
+    // -------------------------
+
+    const commitment1 =
+        await createCommitment(
+            userAmount.toString(),
+            r1,
+            user.zk.publicKey
+        );
+
+
+
+    const commitment2 =
+        await createCommitment(
+            fee.toString(),
+            r2,
+            relayerWallet.zk.publicKey
+        );
+
+
+
+    console.log("\n========== COMMITMENTS ==========");
+
+    console.log(commitment1);
+
+    console.log(commitment2);
+
+
+
+    // -------------------------
+    // CIRCOM INPUT
+    // -------------------------
+
+    const input = {
+
+        depositAmount:
+            depositAmount.toString(),
+
+        pk2:
+            relayerWallet.zk.publicKey,
+
+        c1:
+            commitment1.decimal,
+
+        c2:
+            commitment2.decimal,
+
+        a1:
+            userAmount.toString(),
+
+        r1:
+            r1,
+
+        pk1:
+            user.zk.publicKey,
+
+        a2:
+            fee.toString(),
+
+        r2:
+            r2
+    };
+
+
+
+    console.log("\n========== CIRCOM INPUT ==========");
+
+    console.log(input);
+
+
+
+    // -------------------------
+    // GENERATE PROOF
+    // -------------------------
+
+    const { proof, publicSignals } =
+        await snarkjs.groth16.fullProve(
+
+            input,
+
+            "build/deposit_proof_js/deposit_proof.wasm",
+
+            "build/deposit_final.zkey"
+        );
+
+
+
+    console.log("\n========== PUBLIC SIGNALS ==========");
+
+    console.log(publicSignals);
+
+
+
+    // -------------------------
+    // FORMAT PROOF
+    // -------------------------
+
+    const calldata =
+        await snarkjs.groth16.exportSolidityCallData(
+            proof,
+            publicSignals
+        );
+
+
+
+    const argv =
+        calldata
+            .replace(/["[\]\s]/g, "")
+            .split(",");
+
+
+
+    const a = [
+        argv[0],
+        argv[1]
+    ];
+
+
+
+    const b = [
+        [argv[2], argv[3]],
+        [argv[4], argv[5]]
+    ]
+
+
+
+    const c = [
+        argv[6],
+        argv[7]
+    ];
+
+
+
+    console.log("\n========== PROOF ==========");
+
+    console.log("a:", a);
+
+    console.log("b:", b);
+
+    console.log("c:", c);
+
+
+    const vKey = require("../build/deposit_verification_key.json");
+
+    const offchainVerified =
+        await snarkjs.groth16.verify(
+            vKey,
+            publicSignals,
+            proof
+        );
+
+    console.log(
+        "\n========== OFFCHAIN VERIFIED =========="
+    );
+
+    console.log(offchainVerified);
+
+    // -------------------------
+    // VERIFY DIRECTLY
+    // -------------------------
+
+    const verified =
+        await depositVerifier.verifyProof(
+            a,
+            b,
+            c,
+            publicSignals
+        );
+
+
+
+    console.log("\n========== VERIFIED ==========");
+
+    console.log(verified);
+
+
+
+    expect(verified).to.equal(true);
+});
 
 
     it("Should deposit privately", async function () {
@@ -392,7 +691,7 @@ describe("PriFi Wallet Architecture", function () {
         const b = [
             [argv[2], argv[3]],
             [argv[4], argv[5]]
-        ].map(inner => inner.reverse());
+        ]
 
 
 
@@ -491,7 +790,18 @@ describe("PriFi Wallet Architecture", function () {
         // -------------------------
 
         console.log("\n========== EVENTS ==========");
+        console.log("type of",
+                typeof privatePool.deposit
+            );
 
+
+        const pool =
+            await privatePool.pools(0);
+
+        console.log(pool);
+
+        console.log( "receipt: " , receipt);
+        console.log("recipt logs: ",receipt.logs);
         for (const event of receipt.events) {
 
             console.log("\nEVENT:");
@@ -575,5 +885,107 @@ describe("PriFi Wallet Architecture", function () {
         console.log("\n========== RELAYER DECRYPTED ==========");
 
         console.log(relayerDecrypted);
+    });
+
+    it("Should rebuild merkle trees from emitted events", async function () {
+
+        console.log("\n========== FETCHING EVENTS ==========");
+
+
+
+        // fetch all NoteCreated events
+        const events =
+            await privatePool.queryFilter(
+                privatePool.filters.NoteCreated()
+            );
+
+
+
+        console.log(
+            "Total NoteCreated Events:",
+            events.length
+        );
+
+
+
+        // rebuild trees from history
+        for (const event of events) {
+
+            const poolId =
+                event.args.poolId.toString();
+
+            const commitment =
+                BigInt(
+                    event.args.commitment.toString()
+                );
+
+
+
+            console.log("\n========== NOTE ==========");
+
+            console.log(
+                "PoolId:",
+                poolId
+            );
+
+            console.log(
+                "Commitment:",
+                commitment.toString()
+            );
+
+
+
+            // initialize tree
+            await initializePool(poolId);
+
+
+
+            const state =
+                poolStates[poolId];
+
+
+
+            // insert commitment
+            state.tree.insert(commitment);
+
+
+
+            // latest root
+            const root =
+                state.tree.root.toString();
+
+            state.latestRoot =
+                root;
+
+            state.roots.push(root);
+
+
+
+            // leaf index
+            const leafIndex =
+                state.tree.leaves.length - 1;
+
+            state.leafToIndex[
+                commitment.toString()
+            ] = leafIndex;
+
+
+
+            console.log(
+                "Leaf Index:",
+                leafIndex
+            );
+
+            console.log(
+                "Latest Root:",
+                root
+            );
+        }
+
+
+
+        console.log("\n========== FINAL POOL STATES ==========");
+
+        console.log(poolStates);
     });
 });
