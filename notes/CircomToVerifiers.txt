@@ -1,0 +1,53 @@
+Folder Structure
+
+project/
+│
+├── circuits/
+│   ├── merkle_path.circom
+│   ├── deposit_proof.circom
+│   ├── transfer_proof.circom
+│   └── withdraw_proof.circom
+│
+├── build/
+├── ptau/
+└── contracts/
+
+
+STEP 1 — Download PTAU
+    If not already downloaded:
+        mkdir ptau
+
+Download:
+    curl -L \
+    https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_15.ptau \
+    -o ptau/powersOfTau28_hez_final_15.ptau
+
+STEP 2 — Compile Deposit Circuit
+
+    circom circuits/deposit_proof.circom \
+    --r1cs \
+    --wasm \
+    --sym \
+    -o build
+
+STEP 3 — Generate Deposit ZKey
+    snarkjs groth16 setup \
+    build/deposit_proof.r1cs \
+    ptau/powersOfTau28_hez_final_15.ptau \
+    build/deposit_0000.zkey
+
+STEP 4 — Finalize Deposit ZKey
+
+    snarkjs zkey contribute \
+    build/deposit_0000.zkey \
+    build/deposit_final.zkey \
+    --name="mahesh"
+
+Type random text when asked.
+
+STEP 5 — Export Deposit Verifier
+    snarkjs zkey export solidityverifier \
+    build/deposit_final.zkey \
+    contracts/DepositVerifier.sol
+
+DONE.

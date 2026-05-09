@@ -39,7 +39,7 @@ template DepositProof() {
     c1 === hasher1.out;
 
     component hasher2 = Poseidon(4);
-    hasher1.inputs[0] <== 1; //<--- domain seperator
+    hasher2.inputs[0] <== 1; //<--- domain seperator
     hasher2.inputs[1] <== a2;
     hasher2.inputs[2] <== r2;
     hasher2.inputs[3] <== pk2;

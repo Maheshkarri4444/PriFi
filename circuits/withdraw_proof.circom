@@ -163,5 +163,5 @@ component main {public [
     nullifiers,
     withdrawAmount,
     out_enabled,
-    c_outs,
+    c_outs
 ]} = WithdrawProof(4,20);

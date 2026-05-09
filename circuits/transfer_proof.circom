@@ -154,5 +154,5 @@ component main {public [
     roots,
     nullifiers,
     output_enabled,
-    c_outs,
+    c_outs
 ]} = TransferProof(4,20);
