@@ -11,7 +11,9 @@ interface IVerifier {
 }
 
 interface IPoseidon {
-    function hash(bytes32 left, bytes32 right) external pure returns (bytes32);
+    function poseidon(
+        uint256[2] calldata input
+    ) external pure returns (uint256);
 }
 
 /**
@@ -107,7 +109,7 @@ contract PrivatePool {
         for (uint8 i = 0; i < TREE_DEPTH; i++) {
             p.zeros[i] = zero; // the Z0,Z1,Z2 ...
             p.filledSubtrees[i] = zero; // inital zero tree
-            zero = poseidon.hash(zero, zero); // Z1 = hash(Z0,Z0) ... Z20 = hash(Z19,Z19)
+            zero = bytes32(poseidon.poseidon([uint256(zero), uint256(zero)])); // Z1 = hash(Z0,Z0) ... Z20 = hash(Z19,Z19)
         }
 
         p.root = zero; // Z20
@@ -564,11 +566,17 @@ contract PrivatePool {
                 // even -> the current one is left
                 // so add it to the subtree, compute hash with zero[i](i.e Zi -> refere notes/filled_subtrees.txt)
                 p.filledSubtrees[i] = current;
-                current = poseidon.hash(current, p.zeros[i]);
+                current = bytes32(
+                    poseidon.poseidon([uint256(current), uint256(p.zeros[i])])
+                );
             } else {
                 // odd -> the current one is right
                 // so hash it with present value of the subtree
-                current = poseidon.hash(p.filledSubtrees[i], current);
+                current = bytes32(
+                    poseidon.poseidon(
+                        [uint256(p.filledSubtrees[i]), uint256(current)]
+                    )
+                );
             }
             idx >>= 1; // shifts 1 bit
         }
