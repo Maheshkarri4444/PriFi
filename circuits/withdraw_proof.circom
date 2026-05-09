@@ -63,6 +63,11 @@ template WithdrawProof(max_inputs, depth) {
     signal sum[max_inputs + 1]; // sum[max_inputs] will be sum of inputs
     sum[0] <== 0;
     signal x[max_inputs];
+
+    component comHasher[max_inputs];
+    component merklePath[max_inputs];
+    component nullHasher[max_inputs];
+
     for(var i = 0; i < max_inputs ; i++){
         // enable constraint
         enabled[i] * (1 - enabled[i]) === 0;
@@ -80,36 +85,36 @@ template WithdrawProof(max_inputs, depth) {
         sum[i + 1] <== sum[i] + x[i];
 
         //input commitment computation checkup
-        component comHasher = Poseidon(4);
-        comHasher.inputs[0] <== 1;
-        comHasher.inputs[1] <== a_ins[i];
-        comHasher.inputs[2] <== r_ins[i];
-        comHasher.inputs[3] <== pk;
+        comHasher[i] = Poseidon(4);
+        comHasher[i].inputs[0] <== 1;
+        comHasher[i].inputs[1] <== a_ins[i];
+        comHasher[i].inputs[2] <== r_ins[i];
+        comHasher[i].inputs[3] <== pk;
 
         // constraint 
-        enabled[i] * (comHasher.out - c_ins[i]) === 0;
+        enabled[i] * (comHasher[i].out - c_ins[i]) === 0;
 
         // merkle root validity check
-        component merklePath = MerklePath(depth);
-        merklePath.leaf <== c_ins[i];
+        merklePath[i] = MerklePath(depth);
+        merklePath[i].leaf <== c_ins[i];
         for (var j = 0; j < depth; j++){
             pathIndices[i][j] * (1 - pathIndices[i][j]) === 0;
 
-            merklePath.pathElements[j] <== pathElements[i][j];
-            merklePath.pathIndices[j] <== pathIndices[i][j];
+            merklePath[i].pathElements[j] <== pathElements[i][j];
+            merklePath[i].pathIndices[j] <== pathIndices[i][j];
         }
 
         // computed root , root equalent constraint
-        enabled[i] * (roots[i] - merklePath.computedRoot) === 0;
+        enabled[i] * (roots[i] - merklePath[i].computedRoot) === 0;
 
         // nullifiers checkup
-        component nullHasher = Poseidon(4);
-        nullHasher.inputs[0] <== 2;
-        nullHasher.inputs[1] <== c_ins[i];
-        nullHasher.inputs[2] <== r_ins[i];
-        nullHasher.inputs[3] <== sk;
+        nullHasher[i] = Poseidon(4);
+        nullHasher[i].inputs[0] <== 2;
+        nullHasher[i].inputs[1] <== c_ins[i];
+        nullHasher[i].inputs[2] <== r_ins[i];
+        nullHasher[i].inputs[3] <== sk;
 
-        enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
+        enabled[i] * (nullHasher[i].out - nullifiers[i]) === 0;
     }
 
     // OUTPUTS VALIDATION
@@ -132,6 +137,8 @@ template WithdrawProof(max_inputs, depth) {
     signal y[2];
     outSum[0] <== 0;
 
+    component outHasher[2];
+
     for(var i = 0; i < 2; i++){
         // output enabled signal
         out_enabled[i] * (1 - out_enabled[i]) === 0;
@@ -140,14 +147,14 @@ template WithdrawProof(max_inputs, depth) {
         outSum[i + 1] <== outSum[i] + y[i];
 
         // output commitment computation checkup
-        component outHasher = Poseidon(4);
-        outHasher.inputs[0] <== 1;
-        outHasher.inputs[1] <== a_outs[i];
-        outHasher.inputs[2] <== r_outs[i];
-        outHasher.inputs[3] <== receivers[i];
+        outHasher[i] = Poseidon(4);
+        outHasher[i].inputs[0] <== 1;
+        outHasher[i].inputs[1] <== a_outs[i];
+        outHasher[i].inputs[2] <== r_outs[i];
+        outHasher[i].inputs[3] <== receivers[i];
 
         //constraint
-        out_enabled[i] * (outHasher.out - c_outs[i]) === 0;
+        out_enabled[i] * (outHasher[i].out - c_outs[i]) === 0;
     }
  
     // Input Summation == Output Summation constraint

@@ -1,5 +1,4 @@
 Folder Structure
-
 project/
 │
 ├── circuits/
@@ -12,42 +11,101 @@ project/
 ├── ptau/
 └── contracts/
 
-
-STEP 1 — Download PTAU
-    If not already downloaded:
-        mkdir ptau
+STEP 1 — Download PTAU (ONLY ONCE)
+    mkdir ptau
 
 Download:
     curl -L \
-    https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_15.ptau \
-    -o ptau/powersOfTau28_hez_final_15.ptau
+    https://storage.googleapis.com/zkevm/ptau/powersOfTau28_hez_final_17.ptau \
+    -o ptau/powersOfTau28_hez_final_17.ptau
+
+DEPOSIT CIRCUIT
 
 STEP 2 — Compile Deposit Circuit
-
     circom circuits/deposit_proof.circom \
-    --r1cs \
-    --wasm \
-    --sym \
-    -o build
+        --r1cs \
+        --wasm \
+        --sym \
+        -o build
 
 STEP 3 — Generate Deposit ZKey
     snarkjs groth16 setup \
-    build/deposit_proof.r1cs \
-    ptau/powersOfTau28_hez_final_15.ptau \
-    build/deposit_0000.zkey
+        build/deposit_proof.r1cs \
+        ptau/powersOfTau28_hez_final_17.ptau \
+        build/deposit_0000.zkey
 
 STEP 4 — Finalize Deposit ZKey
-
     snarkjs zkey contribute \
-    build/deposit_0000.zkey \
-    build/deposit_final.zkey \
-    --name="mahesh"
-
-Type random text when asked.
+        build/deposit_0000.zkey \
+        build/deposit_final.zkey \
+        --name="mahesh"
 
 STEP 5 — Export Deposit Verifier
     snarkjs zkey export solidityverifier \
-    build/deposit_final.zkey \
-    contracts/DepositVerifier.sol
+        build/deposit_final.zkey \
+        contracts/DepositVerifier.sol
 
 DONE.
+
+TRANSFER CIRCUIT
+
+STEP 6 — Compile Transfer Circuit
+    circom circuits/transfer_proof.circom \
+        --r1cs \
+        --wasm \
+        --sym \
+        -o build
+
+STEP 7 — Generate Transfer ZKey
+
+    snarkjs groth16 setup \
+        build/transfer_proof.r1cs \
+        ptau/powersOfTau28_hez_final_17.ptau \
+        build/transfer_0000.zkey
+
+STEP 8 — Finalize Transfer ZKey
+    snarkjs zkey contribute \
+        build/transfer_0000.zkey \
+        build/transfer_final.zkey \
+        --name="mahesh"
+
+STEP 9 — Export Transfer Verifier
+    snarkjs zkey export solidityverifier \
+        build/transfer_final.zkey \
+        contracts/TransferVerifier.sol
+
+DONE.
+
+WITHDRAW CIRCUIT
+
+STEP 10 — Compile Withdraw Circuit
+    circom circuits/withdraw_proof.circom \
+        --r1cs \
+        --wasm \
+        --sym \
+        -o build
+
+STEP 11 — Generate Withdraw ZKey
+    snarkjs groth16 setup \
+        build/withdraw_proof.r1cs \
+        ptau/powersOfTau28_hez_final_17.ptau \
+        build/withdraw_0000.zkey
+
+STEP 12 — Finalize Withdraw ZKey
+    snarkjs zkey contribute \
+        build/withdraw_0000.zkey \
+        build/withdraw_final.zkey \
+        --name="mahesh"
+
+STEP 13 — Export Withdraw Verifier
+    snarkjs zkey export solidityverifier \
+        build/withdraw_final.zkey \
+        contracts/WithdrawVerifier.sol
+
+DONE.
+
+Final Output
+    contracts/
+        ├── DepositVerifier.sol
+        ├── TransferVerifier.sol
+        └── WithdrawVerifier.sol

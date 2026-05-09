@@ -66,6 +66,10 @@ template TransferProof(max_inputs,  depth) {
     sum[0] <== 0;  
     signal x[max_inputs];
 
+    component hasher[max_inputs];
+    component merklePath[max_inputs];
+    component nullHasher[max_inputs];
+
     // note: in circom we cannot to circular addition like sum <== sum + amount;
     //       thats why we are using sum array.
 
@@ -78,35 +82,35 @@ template TransferProof(max_inputs,  depth) {
         sum[i + 1] <== sum[i] + x[i];
 
         // input commitment computation checkup
-        component hasher = Poseidon(4);
-        hasher.inputs[0] <== 1; //<-- domain seperator
-        hasher.inputs[1] <== a_ins[i];
-        hasher.inputs[2] <== r_ins[i];
-        hasher.inputs[3] <== pk;
+        hasher[i] = Poseidon(4);
+        hasher[i].inputs[0] <== 1; //<-- domain seperator
+        hasher[i].inputs[1] <== a_ins[i];
+        hasher[i].inputs[2] <== r_ins[i];
+        hasher[i].inputs[3] <== pk;
 
-        enabled[i] * (c_ins[i] - hasher.out) === 0; //commitment checkup
+        enabled[i] * (c_ins[i] - hasher[i].out) === 0; //commitment checkup
 
         // root validity check for that commitment
-        component merklePath = MerklePath(depth);
-        merklePath.leaf <== c_ins[i];
+        merklePath[i] = MerklePath(depth);
+        merklePath[i].leaf <== c_ins[i];
         for (var j = 0; j < depth ; j++ ){
             pathIndices[i][j] * (1 - pathIndices[i][j]) === 0;
 
-            merklePath.pathIndices[j] <== pathIndices[i][j];
-            merklePath.pathElements[j] <== pathElements[i][j];
+            merklePath[i].pathIndices[j] <== pathIndices[i][j];
+            merklePath[i].pathElements[j] <== pathElements[i][j];
         }
 
-        enabled[i] * (merklePath.computedRoot - roots[i]) === 0; 
+        enabled[i] * (merklePath[i].computedRoot - roots[i]) === 0; 
 
         // nullifier computation checkup for that commitment
         // nullifier -> poseidon(c_in,r_in,sk) 
-        component nullHasher = Poseidon(4);
-        nullHasher.inputs[0] <== 2; // <-- domain sepeartor
-        nullHasher.inputs[1] <== c_ins[i]; 
-        nullHasher.inputs[2] <== r_ins[i]; // "r" used to create that commitment
-        nullHasher.inputs[3] <== sk;  // why not pk? because the sender can compute the nullifier.
+        nullHasher[i] = Poseidon(4);
+        nullHasher[i].inputs[0] <== 2; // <-- domain sepeartor
+        nullHasher[i].inputs[1] <== c_ins[i]; 
+        nullHasher[i].inputs[2] <== r_ins[i]; // "r" used to create that commitment
+        nullHasher[i].inputs[3] <== sk;  // why not pk? because the sender can compute the nullifier.
 
-        enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
+        enabled[i] * (nullHasher[i].out - nullifiers[i]) === 0;
 
     }
 
@@ -123,6 +127,8 @@ template TransferProof(max_inputs,  depth) {
     signal input receivers[3]; //private
     receivers[2] === relayer;
 
+    component outHasher[3];
+
     signal out_sum[4];
     out_sum[0] <== 0;
     signal y[3];
@@ -131,16 +137,16 @@ template TransferProof(max_inputs,  depth) {
         output_enabled[i] * (1 - output_enabled[i]) === 0;
 
         //output commitment checkup
-        component outHasher = Poseidon(4);
-        outHasher.inputs[0] <== 1;
-        outHasher.inputs[1] <== a_outs[i];
-        outHasher.inputs[2] <== r_outs[i];
-        outHasher.inputs[3] <== receivers[i];
+        outHasher[i] = Poseidon(4);
+        outHasher[i].inputs[0] <== 1;
+        outHasher[i].inputs[1] <== a_outs[i];
+        outHasher[i].inputs[2] <== r_outs[i];
+        outHasher[i].inputs[3] <== receivers[i];
 
         y[i] <== output_enabled[i] * a_outs[i];
         out_sum[i + 1] <== out_sum[i] + y[i];
 
-        output_enabled[i] * (c_outs[i] - outHasher.out) === 0;        
+        output_enabled[i] * (c_outs[i] - outHasher[i].out) === 0;        
     }
 
     // sum of inputs === sum of outputs
