@@ -60,6 +60,9 @@ contract PrivatePool {
     // poseidon
     IPoseidon public immutable poseidon;
 
+    // relayer
+    address public immutable relayer;
+
     // events
     event NewPool(uint256 indexed poolId); //indexed-> searchable/filterable
     // we dont store the encryptedNotes on chain ( storage gas ) instead we emit them as events
@@ -71,12 +74,14 @@ contract PrivatePool {
         address _depositVerifier,
         address _transferVerifier,
         address _withdrawVerifier,
-        address _poseidon
+        address _poseidon,
+        address _relayer
     ) {
         depositVerifier = IVerifier(_depositVerifier);
         transferVerifier = IVerifier(_transferVerifier);
         withdrawVerifier = IVerifier(_withdrawVerifier);
         poseidon = IPoseidon(_poseidon);
+        relayer = _relayer;
         _createPool();
     }
 
@@ -137,7 +142,7 @@ contract PrivatePool {
         uint256[2][2] calldata b,
         uint256[2] calldata c,
         bytes32 C1, // First commitment (required)
-        bytes32 C2, // 2nd commitment   relayer fee
+        bytes32 C2, // 2nd commitment   relayer  (required)
         bytes calldata encryptedNote1, // encrypted (amount, randomness) for C1
         bytes calldata encryptedNote2 // Encrypted (amount, randomness) for C2
     ) external payable {
@@ -158,12 +163,14 @@ contract PrivatePool {
         );
         // public signals
         // deposit amount
+        // pk2 (relayer)
         // c1
         // c2
-        uint256[] memory publicSignals = new uint256[](3);
+        uint256[] memory publicSignals = new uint256[](4);
         publicSignals[0] = msg.value;
-        publicSignals[1] = uint256(C1);
-        publicSignals[2] = uint256(C2);
+        publicSignals[1] = uint256(uint160(relayer));
+        publicSignals[2] = uint256(C1);
+        publicSignals[3] = uint256(C2);
 
         // in deposit we dont need to check merkle path
         // deposit zk , proves that the amounts that are in the commitments equals deposited amount
@@ -278,14 +285,18 @@ contract PrivatePool {
         // zkproof
 
         //required public signals
+        // relayer, - 1
         // enabled,  - MAX_INPUTS
         // roots,   - MAX_INPUTS
         // nullifiers,  - MAX_INPUTS
         // output_enabled, - 3
         // c_outs,  - 3
 
-        uint256[] memory publicSignals = new uint256[](MAX_INPUTS * 3 + 3 + 3);
+        uint256[] memory publicSignals = new uint256[](
+            1 + MAX_INPUTS * 3 + 3 + 3
+        );
         uint8 idx = 0;
+        publicSignals[idx++] = uint256(uint160(relayer));
         for (uint8 i = 0; i < MAX_INPUTS; i++) {
             publicSignals[idx++] = uint256(call.enabled[i]);
         }
@@ -402,14 +413,14 @@ contract PrivatePool {
     ) external {
         uint256 totalWithdrawAmount = 0;
         for (uint256 i = 0; i < calls.length; i++) {
-            _singleWithdraw(calls[i]);
+            _singleWithdraw(calls[i], to);
             totalWithdrawAmount += calls[i].withdrawAmount;
         }
         (bool success, ) = to.call{value: totalWithdrawAmount}("");
         require(success, "Withdraw failed");
     }
 
-    function _singleWithdraw(WithdrawCall calldata call) internal {
+    function _singleWithdraw(WithdrawCall calldata call, address to) internal {
         // to be implemented
         // get all the inputs validated
         // verify the proof
@@ -449,6 +460,8 @@ contract PrivatePool {
 
         // for zk proof rquired public inputs:
         /**
+            receiver,
+            relayer,
             enabled,
             roots,
             nullifiers,
@@ -457,17 +470,19 @@ contract PrivatePool {
             c_outs,
          */
         uint256[] memory publicSignals = new uint256[](
-            MAX_INPUTS * 3 + 1 + (2 * 2)
+            2 + MAX_INPUTS * 3 + 1 + (2 * 2)
         );
+        publicSignals[0] = uint256(uint160(to));
+        publicSignals[1] = uint256(uint160(relayer));
 
         // enabled roots nullifier
-        for (uint8 i = 0; i < MAX_INPUTS; i++) {
-            publicSignals[i] = uint256(call.enabled[i]);
-            publicSignals[i + 4] = uint256(call.roots[i]);
-            publicSignals[i + 8] = uint256(call.nullifiers[i]);
+        for (uint8 i = 2; i < MAX_INPUTS + 2; i++) {
+            publicSignals[i] = uint256(call.enabled[i - 2]);
+            publicSignals[i + 4] = uint256(call.roots[i - 2]);
+            publicSignals[i + 8] = uint256(call.nullifiers[i - 2]);
         }
         // withdraw amount
-        uint8 idx = 12;
+        uint8 idx = 14;
         publicSignals[idx++] = call.withdrawAmount;
 
         // outputs enabled

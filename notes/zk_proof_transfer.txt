@@ -9,7 +9,7 @@ Core Logic:
 Ownership:
 - The circuit verifies ownership using:
 
-    pk = Poseidon(sk)
+    pk = Poseidon(3, sk)
 
 Meaning:
 - Only the owner with the correct secret key can spend notes.
@@ -91,7 +91,9 @@ Input Commitment Construction:
 
 - Each input commitment is reconstructed using:
 
-    c_in = Poseidon(amount, randomness, owner_pk)
+    c_in = Poseidon(1, amount, randomness, owner_pk)
+    Note: 1 <-- domain_seperator for commitments
+
 
 Meaning:
 - The circuit verifies that the provided note data
@@ -113,7 +115,8 @@ Nullifier Construction:
 
 - Each nullifier is generated using:
 
-    nullifier = Poseidon(c_in, r_in, sk)
+    nullifier = Poseidon(2, c_in, r_in, sk)
+    Note: 2 <-- domain_seperator for nullifiers
 
 Meaning:
 - Every spend produces a unique identifier.
@@ -125,7 +128,9 @@ Output Commitment Construction:
 
 - Each output note is constructed using:
 
-    c_out = Poseidon(amount, randomness, receiver_pk)
+    c_out = Poseidon(1, amount, randomness, receiver_pk)
+    Note: 1 <-- domain_seperator for commitments
+
 
 Meaning:
 - Creates new private notes for receivers.

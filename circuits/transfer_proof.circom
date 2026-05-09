@@ -25,10 +25,14 @@ template TransferProof(max_inputs,  depth) {
     // private inputs
     signal input sk;    // PrivateKey of the wallet
     signal input pk;    // zkPublicKey of the wallet
+    
+    // relayer address
+    signal input relayer; //public 
 
     // pk = poseidon(sk)
-    component ownershipHasher = Poseidon(1);
-    ownershipHasher.inputs[0] = sk;
+    component ownershipHasher = Poseidon(2);
+    ownershipHasher.inputs[0] <== 3; // <--- domain seperator
+    ownershipHasher.inputs[1] <== sk;
     pk === ownershipHasher.out; // zk publickey ownership constraint
 
 
@@ -74,11 +78,11 @@ template TransferProof(max_inputs,  depth) {
         sum[i + 1] <== sum[i] + x[i];
 
         // input commitment computation checkup
-        component hasher = Poseidon(3);
-
-        hasher.inputs[0] <== a_ins[i];
-        hasher.inputs[1] <== r_ins[i];
-        hasher.inputs[2] <== pk;
+        component hasher = Poseidon(4);
+        hasher.inputs[0] <== 1; //<-- domain seperator
+        hasher.inputs[1] <== a_ins[i];
+        hasher.inputs[2] <== r_ins[i];
+        hasher.inputs[3] <== pk;
 
         enabled[i] * (c_ins[i] - hasher.out) === 0; //commitment checkup
 
@@ -86,6 +90,8 @@ template TransferProof(max_inputs,  depth) {
         component merklePath = MerklePath(depth);
         merklePath.leaf <== c_ins[i];
         for (var j = 0; j < depth ; j++ ){
+            pathIndices[i][j] * (1 - pathIndices[i][j]) === 0;
+
             merklePath.pathIndices[j] <== pathIndices[i][j];
             merklePath.pathElements[j] <== pathElements[i][j];
         }
@@ -94,10 +100,11 @@ template TransferProof(max_inputs,  depth) {
 
         // nullifier computation checkup for that commitment
         // nullifier -> poseidon(c_in,r_in,sk) 
-        component nullHasher = Poseidon(3);
-        nullHasher.inputs[0] = c_ins[i]; 
-        nullHasher.inputs[1] = r_ins[i]; // "r" used to create that commitment
-        nullHasher.inputs[2] = sk;  // why not pk? because the sender can compute the nullifier.
+        component nullHasher = Poseidon(4);
+        nullHasher.inputs[0] <== 2; // <-- domain sepeartor
+        nullHasher.inputs[1] <== c_ins[i]; 
+        nullHasher.inputs[2] <== r_ins[i]; // "r" used to create that commitment
+        nullHasher.inputs[3] <== sk;  // why not pk? because the sender can compute the nullifier.
 
         enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
 
@@ -114,6 +121,7 @@ template TransferProof(max_inputs,  depth) {
     signal input a_outs[3]; // private
     signal input r_outs[3]; //private
     signal input receivers[3]; //private
+    receivers[2] === relayer;
 
     signal out_sum[4];
     out_sum[0] <== 0;
@@ -123,15 +131,16 @@ template TransferProof(max_inputs,  depth) {
         output_enabled[i] * (1 - output_enabled[i]) === 0;
 
         //output commitment checkup
-        component outHasher = Poseidon(3);
-        outHasher.inputs[0] = a_outs[i];
-        outHasher.inputs[1] = r_outs[i];
-        outHasher.inputs[2] = receivers[i];
+        component outHasher = Poseidon(4);
+        outHasher.inputs[0] <== 1;
+        outHasher.inputs[1] <== a_outs[i];
+        outHasher.inputs[2] <== r_outs[i];
+        outHasher.inputs[3] <== receivers[i];
 
         y[i] <== output_enabled[i] * a_outs[i];
         out_sum[i + 1] <== out_sum[i] + y[i];
 
-        output_enabled[i] * (c_out[i] - outHasher.out) === 0;        
+        output_enabled[i] * (c_outs[i] - outHasher.out) === 0;        
     }
 
     // sum of inputs === sum of outputs
@@ -140,6 +149,7 @@ template TransferProof(max_inputs,  depth) {
 } 
 
 component main {public [ 
+    relayer,
     enabled,
     roots,
     nullifiers,

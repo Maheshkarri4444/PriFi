@@ -34,9 +34,16 @@ template WithdrawProof(max_inputs, depth) {
     signal input pk; // private
     signal input sk; // private
 
+    //receiver
+    signal input receiver; //public
+    //relayer
+    signal input relayer; //public
+
+
     // owndership check
-    component ownHasher = Poseidon(1);
-    ownHasher.inputs[0] <== sk;
+    component ownHasher = Poseidon(2);
+    ownHasher.inputs[0] <== 3;
+    ownHasher.inputs[1] <== sk;
     pk === ownHasher.out;
 
     //INPUTS VALIDATION
@@ -73,18 +80,21 @@ template WithdrawProof(max_inputs, depth) {
         sum[i + 1] <== sum[i] + x[i];
 
         //input commitment computation checkup
-        component comHasher = Poseidon(3);
-        comHasher.inputs[0] <== a_ins[i];
-        comHasher.inputs[1] <== r_ins[i];
-        comHasher.inputs[2] <== pk;
+        component comHasher = Poseidon(4);
+        comHasher.inputs[0] <== 1;
+        comHasher.inputs[1] <== a_ins[i];
+        comHasher.inputs[2] <== r_ins[i];
+        comHasher.inputs[3] <== pk;
 
         // constraint 
         enabled[i] * (comHasher.out - c_ins[i]) === 0;
 
         // merkle root validity check
         component merklePath = MerklePath(depth);
-        merklePath.leaf = c_ins[i];
+        merklePath.leaf <== c_ins[i];
         for (var j = 0; j < depth; j++){
+            pathIndices[i][j] * (1 - pathIndices[i][j]) === 0;
+
             merklePath.pathElements[j] <== pathElements[i][j];
             merklePath.pathIndices[j] <== pathIndices[i][j];
         }
@@ -93,10 +103,11 @@ template WithdrawProof(max_inputs, depth) {
         enabled[i] * (roots[i] - merklePath.computedRoot) === 0;
 
         // nullifiers checkup
-        component nullHasher = Poseidon(3);
-        nullHasher.inputs[0] <== c_ins[i];
-        nullHasher.inputs[1] <== r_ins[i];
-        nullHasher.inputs[2] <== sk;
+        component nullHasher = Poseidon(4);
+        nullHasher.inputs[0] <== 2;
+        nullHasher.inputs[1] <== c_ins[i];
+        nullHasher.inputs[2] <== r_ins[i];
+        nullHasher.inputs[3] <== sk;
 
         enabled[i] * (nullHasher.out - nullifiers[i]) === 0;
     }
@@ -113,6 +124,10 @@ template WithdrawProof(max_inputs, depth) {
     signal input c_outs[2]; // public
     signal input receivers[2]; // private
 
+
+    receivers[0] === receiver;
+    receivers[1] === relayer;
+
     signal outSum[3];
     signal y[2];
     outSum[0] <== 0;
@@ -125,10 +140,11 @@ template WithdrawProof(max_inputs, depth) {
         outSum[i + 1] <== outSum[i] + y[i];
 
         // output commitment computation checkup
-        component outHasher = Poseidon(3);
-        outHasher.inputs[0] <== a_outs[i];
-        outHasher.inputs[1] <== r_outs[i];
-        outHasher.inputs[2] <== receivers[i];
+        component outHasher = Poseidon(4);
+        outHasher.inputs[0] <== 1;
+        outHasher.inputs[1] <== a_outs[i];
+        outHasher.inputs[2] <== r_outs[i];
+        outHasher.inputs[3] <== receivers[i];
 
         //constraint
         out_enabled[i] * (outHasher.out - c_outs[i]) === 0;
@@ -140,6 +156,8 @@ template WithdrawProof(max_inputs, depth) {
 }
 
 component main {public [
+    receiver,
+    relayer,
     enabled,
     roots,
     nullifiers,

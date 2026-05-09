@@ -38,8 +38,10 @@ Second Note:
 Commitment Construction:
 - Each private note is converted into a commitment using Poseidon hashing:
 
-    c1 = Poseidon(a1, r1, pk1)
-    c2 = Poseidon(a2, r2, pk2)
+    c1 = Poseidon(1, a1, r1, pk1)
+    c2 = Poseidon(1, a2, r2, pk2)
+    
+    Note: 1 <-- domain_seperator
 
 Balance Constraint:
 - The circuit enforces:

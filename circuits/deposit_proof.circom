@@ -28,23 +28,25 @@ template DepositProof() {
     // for 2nd commitment
     signal input a2;     
     signal input r2;
-    signal input pk2;
+    signal input pk2; // public input (relayer)
 
-    component hasher1 = Poseidon(3);
-    hasher1.inputs[0] = a1;
-    hasher1.inputs[1] = r1;
-    hasher1.inputs[2] = pk1;
+    component hasher1 = Poseidon(4);
+    hasher1.inputs[0] <== 1; //<--- domain seperator
+    hasher1.inputs[1] <== a1;
+    hasher1.inputs[2] <== r1;
+    hasher1.inputs[3] <== pk1;
 
     c1 === hasher1.out;
 
-    component hasher2 = Poseidon(3);
-    hasher2.inputs[0] = a2;
-    hasher2.inputs[1] = r2;
-    hasher2.inputs[2] = pk2;
+    component hasher2 = Poseidon(4);
+    hasher1.inputs[0] <== 1; //<--- domain seperator
+    hasher2.inputs[1] <== a2;
+    hasher2.inputs[2] <== r2;
+    hasher2.inputs[3] <== pk2;
 
     c2 === hasher2.out;
 
     depositAmount === a1 + a2; // sum of amounts must be equal to deposit
 }
 
-component main {public [depositAmount, c1 , c2]} = DepositProof();
+component main {public [depositAmount,pk2, c1 , c2]} = DepositProof();

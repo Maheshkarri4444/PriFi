@@ -4,7 +4,8 @@ Deposit Flow
         User signs a fixed message using their wallet
         Wallet derives:
             PrivateKey = H(signature("prifiwallet"))
-            zkPublicKey = Poseidon(PrivateKey)
+            zkPublicKey = Poseidon(3, PrivateKey)
+            Note: 3 <-- domain seperator
             encPublicKey = EC_Derive(PrivateKey)
 
         User selects:
@@ -19,8 +20,8 @@ Deposit Flow
                 (fee, r2, relayerZkPubKey) 
                 > r2 is a fresh randomness
         Wallet computes commitments:
-            C1 = H(a - fee, r1, zkPublicKey)
-            C2 = H(fee, r2, relayerZkPubKey)
+            C1 = H(1,a - fee, r1, zkPublicKey)
+            C2 = H(1,fee, r2, relayerZkPubKey)
 
         Wallet encrypts note data:
             ciphertext1 = Encrypt(encPublicKey, (a - fee, r1))
