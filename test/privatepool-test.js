@@ -192,21 +192,6 @@ async function rebuildWalletState() {
                     JSON.parse(decrypted);
                 console.log("parsed: ",parsed);
 
-                    // poseidon
-                    // const poseidon =
-                    //     await circomlibjs.buildPoseidon();
-
-                    // // nullifier
-                    // const nullifier =
-                    //     poseidon.F.toString(
-                    //         poseidon([
-                    //             2,
-                    //             inputNote.commitment,
-                    //             inputNote.randomness,
-                    //             sender.zk.secretKey
-                    //         ])
-                    //     );
-
                 const poseidon =
                     await circomlibjs.buildPoseidon();
 
