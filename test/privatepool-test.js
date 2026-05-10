@@ -32,6 +32,9 @@ const userWallets = [];
 // poolId => merkle tree state
 const poolStates = {};
 
+const walletStates = {};
+const spentNullifiers = new Set();
+
 
 // contract + signers
 let privatePool;
@@ -84,7 +87,143 @@ async function initializePool(poolId) {
     console.log(`\nPool ${poolId} initialized`);
 }
 
+async function rebuildWalletState() {
 
+    console.log("\n========== REBUILDING WALLET STATE ==========");
+
+    const events =
+        await privatePool.queryFilter(
+            privatePool.filters.NoteCreated()
+        );
+
+    const nullifierEvents =
+        await privatePool.queryFilter(
+            privatePool.filters.NullifierSpent()
+        );
+
+    for (const poolId of Object.keys(poolStates)) {
+
+        const poseidon =
+            await circomlibjs.buildPoseidon();
+
+        const hash = (inputs) => {
+
+            return BigInt(
+                poseidon.F.toString(
+                    poseidon(inputs)
+                )
+            );
+        };
+    const ZERO_VALUE = BigInt(0);
+
+        poolStates[poolId].tree =
+            new IncrementalMerkleTree(
+                hash,
+                20,
+                ZERO_VALUE,
+                2
+            );
+
+        poolStates[poolId].roots = [];
+        poolStates[poolId].latestRoot = null;
+        poolStates[poolId].leafToIndex = {};
+    }
+
+    // clear states
+    for (const key of Object.keys(walletStates)) {
+
+        walletStates[key].notes = [];
+        walletStates[key].balance =
+            ethers.BigNumber.from(0);
+    }
+
+    spentNullifiers.clear();
+
+    // spent nullifiers
+    for (const event of nullifierEvents) {
+
+        spentNullifiers.add(
+            event.args.nullifier.toString()
+        );
+    }
+
+    // rebuild trees
+    for (const event of events) {
+
+        const poolId =
+            event.args.poolId.toString();
+
+        const commitment =
+            BigInt(
+                event.args.commitment.toString()
+            );
+
+        const encryptedNote =
+            event.args.encryptedNote;
+
+        await initializePool(poolId);
+
+        const state =
+            poolStates[poolId];
+
+        state.tree.insert(commitment);
+
+        const leafIndex =
+            state.tree.leaves.length - 1;
+
+        const root =
+            state.tree.root.toString();
+
+        for (const [name, wallet] of Object.entries(walletStates)) {
+
+            try {
+
+                const decrypted =
+                    decryptMessage(
+                        encryptedNote,
+                        wallet.wallet.privateWallet.privateKey
+                    );
+
+                const parsed =
+                    JSON.parse(decrypted);
+
+                wallet.notes.push({
+
+                    poolId,
+
+                    commitment:
+                        commitment.toString(),
+
+                    amount:
+                        parsed.amount,
+
+                    randomness:
+                        parsed.randomness,
+
+                    leafIndex,
+
+                    root
+                });
+
+                wallet.balance =
+                    wallet.balance.add(
+                        parsed.amount
+                    );
+
+                console.log(`\n${name} FOUND NOTE`);
+
+                console.log(parsed);
+
+            } catch (_) {
+
+            }
+        }
+    }
+
+    console.log("\n========== WALLET STATES ==========");
+
+    console.log(walletStates);
+}
 
 describe("PriFi Wallet Architecture", function () {
     
@@ -248,241 +387,241 @@ describe("PriFi Wallet Architecture", function () {
     });
 
 
-it("Should verify deposit proof directly", async function () {
+    it("Should verify deposit proof directly", async function () {
 
-    const depositVerifier =
-    await ethers.getContractAt(
-        "DepositVerifier",
-        "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
-    );
-        const code =
-            await ethers.provider.getCode(
-                depositVerifier.address
+        const depositVerifier =
+        await ethers.getContractAt(
+            "DepositVerifier",
+            "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
+        );
+            const code =
+                await ethers.provider.getCode(
+                    depositVerifier.address
+                );
+        console.log("deposit verifier length:",code.length);
+        // -------------------------
+        // VALUES
+        // -------------------------
+
+        const depositAmount =
+            ethers.utils.parseEther("1");
+
+        const fee =
+            ethers.utils.parseEther("0.01");
+
+        const userAmount =
+            depositAmount.sub(fee);
+
+
+
+        // -------------------------
+        // RANDOMNESS
+        // -------------------------
+
+        const r1 =
+            ethers.BigNumber.from(
+                ethers.utils.randomBytes(31)
+            ).toString();
+
+        const r2 =
+            ethers.BigNumber.from(
+                ethers.utils.randomBytes(31)
+            ).toString();
+
+
+
+
+
+        // -------------------------
+        // USER + RELAYER
+        // -------------------------
+
+        const user =
+            userWallets[0];
+
+
+
+        // -------------------------
+        // COMMITMENTS
+        // -------------------------
+
+        const commitment1 =
+            await createCommitment(
+                userAmount.toString(),
+                r1,
+                user.zk.publicKey
             );
-    console.log("deposit verifier length:",code.length);
-    // -------------------------
-    // VALUES
-    // -------------------------
-
-    const depositAmount =
-        ethers.utils.parseEther("1");
-
-    const fee =
-        ethers.utils.parseEther("0.01");
-
-    const userAmount =
-        depositAmount.sub(fee);
 
 
 
-    // -------------------------
-    // RANDOMNESS
-    // -------------------------
-
-    const r1 =
-        ethers.BigNumber.from(
-            ethers.utils.randomBytes(31)
-        ).toString();
-
-    const r2 =
-        ethers.BigNumber.from(
-            ethers.utils.randomBytes(31)
-        ).toString();
+        const commitment2 =
+            await createCommitment(
+                fee.toString(),
+                r2,
+                relayerWallet.zk.publicKey
+            );
 
 
 
+        console.log("\n========== COMMITMENTS ==========");
 
+        console.log(commitment1);
 
-    // -------------------------
-    // USER + RELAYER
-    // -------------------------
-
-    const user =
-        userWallets[0];
+        console.log(commitment2);
 
 
 
-    // -------------------------
-    // COMMITMENTS
-    // -------------------------
+        // -------------------------
+        // CIRCOM INPUT
+        // -------------------------
 
-    const commitment1 =
-        await createCommitment(
-            userAmount.toString(),
-            r1,
-            user.zk.publicKey
+        const input = {
+
+            depositAmount:
+                depositAmount.toString(),
+
+            pk2:
+                relayerWallet.zk.publicKey,
+
+            c1:
+                commitment1.decimal,
+
+            c2:
+                commitment2.decimal,
+
+            a1:
+                userAmount.toString(),
+
+            r1:
+                r1,
+
+            pk1:
+                user.zk.publicKey,
+
+            a2:
+                fee.toString(),
+
+            r2:
+                r2
+        };
+
+
+
+        console.log("\n========== CIRCOM INPUT ==========");
+
+        console.log(input);
+
+
+
+        // -------------------------
+        // GENERATE PROOF
+        // -------------------------
+
+        const { proof, publicSignals } =
+            await snarkjs.groth16.fullProve(
+
+                input,
+
+                "build/deposit_proof_js/deposit_proof.wasm",
+
+                "build/deposit_final.zkey"
+            );
+
+
+
+        console.log("\n========== PUBLIC SIGNALS ==========");
+
+        console.log(publicSignals);
+
+
+
+        // -------------------------
+        // FORMAT PROOF
+        // -------------------------
+
+        const calldata =
+            await snarkjs.groth16.exportSolidityCallData(
+                proof,
+                publicSignals
+            );
+
+
+
+        const argv =
+            calldata
+                .replace(/["[\]\s]/g, "")
+                .split(",");
+
+
+
+        const a = [
+            argv[0],
+            argv[1]
+        ];
+
+
+
+        const b = [
+            [argv[2], argv[3]],
+            [argv[4], argv[5]]
+        ];
+
+
+
+        const c = [
+            argv[6],
+            argv[7]
+        ];
+
+
+
+        console.log("\n========== PROOF ==========");
+
+        console.log("a:", a);
+
+        console.log("b:", b);
+
+        console.log("c:", c);
+
+
+        const vKey = require("../build/deposit_verification_key.json");
+
+        const offchainVerified =
+            await snarkjs.groth16.verify(
+                vKey,
+                publicSignals,
+                proof
+            );
+
+        console.log(
+            "\n========== OFFCHAIN VERIFIED =========="
         );
 
+        console.log(offchainVerified);
+        
 
+        // -------------------------
+        // VERIFY DIRECTLY
+        // -------------------------
 
-    const commitment2 =
-        await createCommitment(
-            fee.toString(),
-            r2,
-            relayerWallet.zk.publicKey
-        );
+        const verified =
+            await depositVerifier.verifyProof(
+                a,
+                b,
+                c,
+                publicSignals
+            );
 
 
 
-    console.log("\n========== COMMITMENTS ==========");
+        console.log("\n========== VERIFIED ==========");
 
-    console.log(commitment1);
+        console.log(verified);
 
-    console.log(commitment2);
 
 
-
-    // -------------------------
-    // CIRCOM INPUT
-    // -------------------------
-
-    const input = {
-
-        depositAmount:
-            depositAmount.toString(),
-
-        pk2:
-            relayerWallet.zk.publicKey,
-
-        c1:
-            commitment1.decimal,
-
-        c2:
-            commitment2.decimal,
-
-        a1:
-            userAmount.toString(),
-
-        r1:
-            r1,
-
-        pk1:
-            user.zk.publicKey,
-
-        a2:
-            fee.toString(),
-
-        r2:
-            r2
-    };
-
-
-
-    console.log("\n========== CIRCOM INPUT ==========");
-
-    console.log(input);
-
-
-
-    // -------------------------
-    // GENERATE PROOF
-    // -------------------------
-
-    const { proof, publicSignals } =
-        await snarkjs.groth16.fullProve(
-
-            input,
-
-            "build/deposit_proof_js/deposit_proof.wasm",
-
-            "build/deposit_final.zkey"
-        );
-
-
-
-    console.log("\n========== PUBLIC SIGNALS ==========");
-
-    console.log(publicSignals);
-
-
-
-    // -------------------------
-    // FORMAT PROOF
-    // -------------------------
-
-    const calldata =
-        await snarkjs.groth16.exportSolidityCallData(
-            proof,
-            publicSignals
-        );
-
-
-
-    const argv =
-        calldata
-            .replace(/["[\]\s]/g, "")
-            .split(",");
-
-
-
-    const a = [
-        argv[0],
-        argv[1]
-    ];
-
-
-
-    const b = [
-        [argv[2], argv[3]],
-        [argv[4], argv[5]]
-    ];
-
-
-
-    const c = [
-        argv[6],
-        argv[7]
-    ];
-
-
-
-    console.log("\n========== PROOF ==========");
-
-    console.log("a:", a);
-
-    console.log("b:", b);
-
-    console.log("c:", c);
-
-
-    const vKey = require("../build/deposit_verification_key.json");
-
-    const offchainVerified =
-        await snarkjs.groth16.verify(
-            vKey,
-            publicSignals,
-            proof
-        );
-
-    console.log(
-        "\n========== OFFCHAIN VERIFIED =========="
-    );
-
-    console.log(offchainVerified);
-    
-
-    // -------------------------
-    // VERIFY DIRECTLY
-    // -------------------------
-
-    const verified =
-        await depositVerifier.verifyProof(
-            a,
-            b,
-            c,
-            publicSignals
-        );
-
-
-
-    console.log("\n========== VERIFIED ==========");
-
-    console.log(verified);
-
-
-
-    expect(verified).to.equal(true);
-});
+        expect(verified).to.equal(true);
+    });
 
 
     it("Should deposit privately", async function () {
@@ -988,4 +1127,396 @@ it("Should verify deposit proof directly", async function () {
 
         console.log(poolStates);
     });
+
+    it("Should transfer privately between users", async function () {
+
+    const sender =
+        userWallets[0];
+
+    const receiver =
+        userWallets[1];
+
+    // wallet states
+    walletStates["user1"] = {
+        wallet: sender,
+        notes: [],
+        balance: ethers.BigNumber.from(0)
+    };
+
+    walletStates["user2"] = {
+        wallet: receiver,
+        notes: [],
+        balance: ethers.BigNumber.from(0)
+    };
+
+    walletStates["relayer"] = {
+        wallet: relayerWallet,
+        notes: [],
+        balance: ethers.BigNumber.from(0)
+    };
+
+    // rebuild state from ALL events
+    await rebuildWalletState();
+
+    // sender note
+    const inputNote =
+        walletStates["user1"].notes[0];
+
+    console.log("\n========== INPUT NOTE ==========");
+
+    console.log(inputNote);
+
+    // pool
+    const state =
+        poolStates[inputNote.poolId];
+
+    // merkle proof
+    const proof =
+        state.tree.createProof(
+            inputNote.leafIndex
+        );
+
+    console.log("\n========== MERKLE PROOF ==========");
+
+    console.log(proof);
+
+    // transfer amounts
+    const transferAmount =
+        ethers.utils.parseEther("0.4");
+
+    const fee =
+        ethers.utils.parseEther("0.01");
+
+    const inputAmount =
+        ethers.BigNumber.from(
+            inputNote.amount
+        );
+
+    const change =
+        inputAmount
+            .sub(transferAmount)
+            .sub(fee);
+
+    // randomness
+    const rReceiver =
+        ethers.BigNumber.from(
+            ethers.utils.randomBytes(31)
+        ).toString();
+
+    const rChange =
+        ethers.BigNumber.from(
+            ethers.utils.randomBytes(31)
+        ).toString();
+
+    const rRelayer =
+        ethers.BigNumber.from(
+            ethers.utils.randomBytes(31)
+        ).toString();
+
+    // commitments
+    const receiverCommitment =
+        await createCommitment(
+            transferAmount.toString(),
+            rReceiver,
+            receiver.zk.publicKey
+        );
+
+    const changeCommitment =
+        await createCommitment(
+            change.toString(),
+            rChange,
+            sender.zk.publicKey
+        );
+
+    const relayerCommitment =
+        await createCommitment(
+            fee.toString(),
+            rRelayer,
+            relayerWallet.zk.publicKey
+        );
+
+    console.log("\n========== OUTPUT COMMITMENTS ==========");
+
+    console.log(receiverCommitment);
+
+    console.log(changeCommitment);
+
+    console.log(relayerCommitment);
+
+    // poseidon
+    const poseidon =
+        await circomlibjs.buildPoseidon();
+
+    // nullifier
+    const nullifier =
+        poseidon.F.toString(
+            poseidon([
+                2,
+                inputNote.commitment,
+                inputNote.randomness,
+                sender.zk.secretKey
+            ])
+        );
+
+    console.log("\n========== NULLIFIER ==========");
+
+    console.log(nullifier);
+
+    // encrypted notes
+    const encryptedNote1 =
+        encryptMessage(
+            JSON.stringify({
+                amount:
+                    transferAmount.toString(),
+                randomness:
+                    rReceiver
+            }),
+            receiver.privateWallet.publicKey
+        );
+
+    const encryptedNote2 =
+        encryptMessage(
+            JSON.stringify({
+                amount:
+                    change.toString(),
+                randomness:
+                    rChange
+            }),
+            sender.privateWallet.publicKey
+        );
+
+    const encryptedNote3 =
+        encryptMessage(
+            JSON.stringify({
+                amount:
+                    fee.toString(),
+                randomness:
+                    rRelayer
+            }),
+            relayerWallet.privateWallet.publicKey
+        );
+
+    // circom input
+    const input = {
+
+        sk:
+            sender.zk.secretKey,
+
+        pk:
+            sender.zk.publicKey,
+
+        relayer:
+            relayerWallet.zk.publicKey,
+
+        enabled:
+            [1,0,0,0],
+
+        c_ins: [
+            inputNote.commitment,
+            0,
+            0,
+            0
+        ],
+
+        a_ins: [
+            inputNote.amount,
+            0,
+            0,
+            0
+        ],
+
+        r_ins: [
+            inputNote.randomness,
+            0,
+            0,
+            0
+        ],
+
+        roots: [
+            state.tree.root.toString(),
+            0,
+            0,
+            0
+        ],
+
+        pathElements: [
+            proof.siblings.map(
+                x => x[0].toString()
+            ),
+            Array(20).fill(0),
+            Array(20).fill(0),
+            Array(20).fill(0)
+        ],
+
+        pathIndices: [
+            proof.pathIndices,
+            Array(20).fill(0),
+            Array(20).fill(0),
+            Array(20).fill(0)
+        ],
+
+        nullifiers: [
+            nullifier,
+            0,
+            0,
+            0
+        ],
+
+        output_enabled:
+            [1,1,1],
+
+        c_outs: [
+            receiverCommitment.decimal,
+            changeCommitment.decimal,
+            relayerCommitment.decimal
+        ],
+
+        a_outs: [
+            transferAmount.toString(),
+            change.toString(),
+            fee.toString()
+        ],
+
+        r_outs: [
+            rReceiver,
+            rChange,
+            rRelayer
+        ],
+
+        receivers: [
+            receiver.zk.publicKey,
+            sender.zk.publicKey,
+            relayerWallet.zk.publicKey
+        ]
+    };
+
+    console.log("\n========== TRANSFER INPUT ==========");
+
+    console.log(input);
+
+    // proof
+    const { proof: zkProof, publicSignals } =
+        await snarkjs.groth16.fullProve(
+
+            input,
+
+            "build/transfer_proof_js/transfer_proof.wasm",
+
+            "build/transfer_final.zkey"
+        );
+
+    console.log("\n========== PUBLIC SIGNALS ==========");
+
+    console.log(publicSignals);
+
+    const calldata =
+        await snarkjs.groth16.exportSolidityCallData(
+            zkProof,
+            publicSignals
+        );
+
+    const argv =
+        calldata
+            .replace(/["[\]\s]/g, "")
+            .split(",");
+
+    const a = [
+        argv[0],
+        argv[1]
+    ];
+
+    const b = [
+        [argv[2], argv[3]],
+        [argv[4], argv[5]]
+    ];
+
+    const c = [
+        argv[6],
+        argv[7]
+    ];
+
+    console.log("\n========== TRANSFER PROOF ==========");
+
+    console.log(a);
+    console.log(b);
+    console.log(c);
+
+    // relayer decrypt fee
+    const relayerDecrypted =
+        decryptMessage(
+            encryptedNote3,
+            relayerWallet.privateWallet.privateKey
+        );
+
+    console.log("\n========== RELAYER FEE NOTE ==========");
+
+    console.log(relayerDecrypted);
+
+    const rootHex =
+        ethers.utils.hexZeroPad(
+            ethers.BigNumber
+                .from(proof.root.toString())
+                .toHexString(),
+            32
+        );
+
+    // execute transfer
+    const tx =
+        await privatePool
+            .connect(relayerSigner)
+            .transfer([{
+
+                a,
+                b,
+                c,
+
+                enabled:
+                    [1,0,0,0],
+
+                roots: [
+                    rootHex,
+                    ethers.constants.HashZero,
+                    ethers.constants.HashZero,
+                    ethers.constants.HashZero
+                ],
+
+                poolIds:
+                    [0,0,0,0],
+
+                nullifiers: [
+                    ethers.utils.hexZeroPad(
+                        ethers.BigNumber
+                            .from(nullifier)
+                            .toHexString(),
+                        32
+                    ),
+                    ethers.constants.HashZero,
+                    ethers.constants.HashZero,
+                    ethers.constants.HashZero
+                ],
+
+                C1:
+                    receiverCommitment.bytes32,
+
+                C2:
+                    changeCommitment.bytes32,
+
+                C3:
+                    relayerCommitment.bytes32,
+
+                encryptedNote1,
+                encryptedNote2,
+                encryptedNote3
+            }]);
+
+    const receipt =
+        await tx.wait();
+
+    console.log("\n========== TRANSFER RECEIPT ==========");
+
+    console.log(receipt);
+
+    // recompute ALL states
+    await rebuildWalletState();
+});
 });
