@@ -35,7 +35,8 @@ template WithdrawProof(max_inputs, depth) {
     signal input sk; // private
 
     //receiver
-    signal input receiver; //public
+    signal input receiver; //public <- address
+    signal input changeReceiver; //private
     //relayer
     signal input relayer; //public
 
@@ -130,7 +131,7 @@ template WithdrawProof(max_inputs, depth) {
     signal input receivers[2]; // private
 
 
-    receivers[0] === receiver;
+    receivers[0] === changeReceiver;
     receivers[1] === relayer;
 
     signal outSum[3];
