@@ -149,24 +149,24 @@ describe("PriFi Wallet Architecture", function () {
         privatePool =
             await ethers.getContractAt(
                 "PrivatePool",
-                "0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e"
+                "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707"
             );
-        // console.log(
-        //     "Pool Address:",
-        //     privatePool.address
-        // );
+        console.log(
+            "Pool Address:",
+            privatePool.address
+        );
 
-        // const code =
-        //     await ethers.provider.getCode(
-        //         privatePool.address
-        //     );
+        const code =
+            await ethers.provider.getCode(
+                privatePool.address
+            );
 
-        // console.log(
-        //     "Code Length:",
-        //     code.length
-        // );
+        console.log(
+            "Code Length:",
+            code.length
+        );
 
-        // console.log(code);
+        console.log(code);
     });
 
 
@@ -253,9 +253,13 @@ it("Should verify deposit proof directly", async function () {
     const depositVerifier =
     await ethers.getContractAt(
         "DepositVerifier",
-        "0x2279B7A0a67DB372996a5FaB50D91eAA73d2eBe6"
+        "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
     );
-
+        const code =
+            await ethers.provider.getCode(
+                depositVerifier.address
+            );
+    console.log("deposit verifier length:",code.length);
     // -------------------------
     // VALUES
     // -------------------------
@@ -421,7 +425,7 @@ it("Should verify deposit proof directly", async function () {
     const b = [
         [argv[2], argv[3]],
         [argv[4], argv[5]]
-    ]
+    ];
 
 
 
@@ -455,6 +459,7 @@ it("Should verify deposit proof directly", async function () {
     );
 
     console.log(offchainVerified);
+    
 
     // -------------------------
     // VERIFY DIRECTLY
@@ -794,11 +799,6 @@ it("Should verify deposit proof directly", async function () {
                 typeof privatePool.deposit
             );
 
-
-        const pool =
-            await privatePool.pools(0);
-
-        console.log(pool);
 
         console.log( "receipt: " , receipt);
         console.log("recipt logs: ",receipt.logs);
