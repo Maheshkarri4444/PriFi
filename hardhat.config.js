@@ -13,7 +13,7 @@ module.exports = {
         },
 
         monad: {
-            url: "MONAD_RPC_URL_HERE",
+            url: "https://testnet-rpc.monad.xyz",
             accounts: PRIVATE_KEY ? [PRIVATE_KEY] : []
         }
     }
