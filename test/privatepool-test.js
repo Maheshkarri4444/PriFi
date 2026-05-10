@@ -114,7 +114,7 @@ async function rebuildWalletState() {
                 )
             );
         };
-    const ZERO_VALUE = BigInt(0);
+        const ZERO_VALUE = BigInt(0);
 
         poolStates[poolId].tree =
             new IncrementalMerkleTree(
@@ -143,9 +143,13 @@ async function rebuildWalletState() {
     for (const event of nullifierEvents) {
 
         spentNullifiers.add(
-            event.args.nullifier.toString()
+            ethers.BigNumber
+            .from(event.args.nullifier)
+            .toString()
         );
     }
+
+    console.log("spent nullifiers",spentNullifiers);
 
     // rebuild trees
     for (const event of events) {
@@ -186,6 +190,45 @@ async function rebuildWalletState() {
 
                 const parsed =
                     JSON.parse(decrypted);
+                console.log("parsed: ",parsed);
+
+                    // poseidon
+                    // const poseidon =
+                    //     await circomlibjs.buildPoseidon();
+
+                    // // nullifier
+                    // const nullifier =
+                    //     poseidon.F.toString(
+                    //         poseidon([
+                    //             2,
+                    //             inputNote.commitment,
+                    //             inputNote.randomness,
+                    //             sender.zk.secretKey
+                    //         ])
+                    //     );
+
+                const poseidon =
+                    await circomlibjs.buildPoseidon();
+
+                const expectedNullifier =
+                    poseidon.F.toString(
+                        poseidon([
+                            2,
+                            commitment.toString(),
+                            parsed.randomness,
+                            wallet.wallet.zk.secretKey
+                        ])
+                    );
+                console.log("computed nullifier: ",expectedNullifier);
+
+                if (
+                    spentNullifiers.has(
+                        expectedNullifier.toString()
+                    )
+                ) {
+                    console.log("nullifier already present");
+                    continue;
+                }
 
                 wallet.notes.push({
 
