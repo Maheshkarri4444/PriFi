@@ -337,9 +337,6 @@ describe("PriFi Wallet Architecture", function () {
     });
 
 
-
-
-
     it("Should encrypt and decrypt notes between users and relayer", async function () {
 
         // random user
@@ -1546,382 +1543,382 @@ describe("PriFi Wallet Architecture", function () {
 
     // recompute ALL states
     await rebuildWalletState();
-});
+    });
 
-it("Should withdraw privately", async function () {
+    it("Should withdraw privately", async function () {
 
-    const sender =
-        userWallets[0];
+        const sender =
+            userWallets[0];
 
-    // rebuild latest state
-    await rebuildWalletState();
+        // rebuild latest state
+        await rebuildWalletState();
 
-    // pick first unspent note
-    const inputNote =
-        walletStates["user1"].notes[0];
+        // pick first unspent note
+        const inputNote =
+            walletStates["user1"].notes[0];
 
-    console.log("\n========== WITHDRAW INPUT NOTE ==========");
+        console.log("\n========== WITHDRAW INPUT NOTE ==========");
 
-    console.log(inputNote);
+        console.log(inputNote);
 
-    // pool state
-    const state =
-        poolStates[inputNote.poolId];
+        // pool state
+        const state =
+            poolStates[inputNote.poolId];
 
-    // merkle proof
-    const proof =
-        state.tree.createProof(
-            inputNote.leafIndex
-        );
+        // merkle proof
+        const proof =
+            state.tree.createProof(
+                inputNote.leafIndex
+            );
 
-    console.log("\n========== MERKLE PROOF ==========");
+        console.log("\n========== MERKLE PROOF ==========");
 
-    console.log(proof);
+        console.log(proof);
 
-    // amounts
-    const withdrawAmount =
-        ethers.utils.parseEther("0.4");
+        // amounts
+        const withdrawAmount =
+            ethers.utils.parseEther("0.4");
 
-    const fee =
-        ethers.utils.parseEther("0.01");
+        const fee =
+            ethers.utils.parseEther("0.01");
 
-    const inputAmount =
-        ethers.BigNumber.from(
-            inputNote.amount
-        );
+        const inputAmount =
+            ethers.BigNumber.from(
+                inputNote.amount
+            );
 
-    const change =
-        inputAmount
-            .sub(withdrawAmount)
-            .sub(fee);
+        const change =
+            inputAmount
+                .sub(withdrawAmount)
+                .sub(fee);
 
-    // randomness
-    const rChange =
-        ethers.BigNumber.from(
-            ethers.utils.randomBytes(31)
-        ).toString();
+        // randomness
+        const rChange =
+            ethers.BigNumber.from(
+                ethers.utils.randomBytes(31)
+            ).toString();
 
-    const rRelayer =
-        ethers.BigNumber.from(
-            ethers.utils.randomBytes(31)
-        ).toString();
+        const rRelayer =
+            ethers.BigNumber.from(
+                ethers.utils.randomBytes(31)
+            ).toString();
 
-    // commitments
+        // commitments
 
-    // change note back to sender
-    const changeCommitment =
-        await createCommitment(
-            change.toString(),
-            rChange,
-            sender.zk.publicKey
-        );
+        // change note back to sender
+        const changeCommitment =
+            await createCommitment(
+                change.toString(),
+                rChange,
+                sender.zk.publicKey
+            );
 
-    // relayer fee note
-    const relayerCommitment =
-        await createCommitment(
-            fee.toString(),
-            rRelayer,
-            relayerWallet.zk.publicKey
-        );
+        // relayer fee note
+        const relayerCommitment =
+            await createCommitment(
+                fee.toString(),
+                rRelayer,
+                relayerWallet.zk.publicKey
+            );
 
-    console.log("\n========== OUTPUT COMMITMENTS ==========");
+        console.log("\n========== OUTPUT COMMITMENTS ==========");
 
-    console.log(changeCommitment);
+        console.log(changeCommitment);
 
-    console.log(relayerCommitment);
+        console.log(relayerCommitment);
 
-    // poseidon
-    const poseidon =
-        await circomlibjs.buildPoseidon();
+        // poseidon
+        const poseidon =
+            await circomlibjs.buildPoseidon();
 
-    // nullifier
-    const nullifier =
-        poseidon.F.toString(
-            poseidon([
-                2,
+        // nullifier
+        const nullifier =
+            poseidon.F.toString(
+                poseidon([
+                    2,
+                    inputNote.commitment,
+                    inputNote.randomness,
+                    sender.zk.secretKey
+                ])
+            );
+
+        console.log("\n========== NULLIFIER ==========");
+
+        console.log(nullifier);
+
+        // encrypted notes
+
+        // change note
+        const encryptedNote1 =
+            encryptMessage(
+                JSON.stringify({
+                    amount:
+                        change.toString(),
+                    randomness:
+                        rChange
+                }),
+                sender.privateWallet.publicKey
+            );
+
+        // relayer note
+        const encryptedNote2 =
+            encryptMessage(
+                JSON.stringify({
+                    amount:
+                        fee.toString(),
+                    randomness:
+                        rRelayer
+                }),
+                relayerWallet.privateWallet.publicKey
+            );
+
+        // circom input
+        const input = {
+
+            pk:
+                sender.zk.publicKey,
+
+            sk:
+                sender.zk.secretKey,
+
+            receiver:
+                ethers.BigNumber
+                    .from(userSigner.address)
+                    .toString(),
+            
+            changeReceiver:
+                sender.zk.publicKey,
+
+            relayer:
+                relayerWallet.zk.publicKey,
+
+            enabled:
+                [1,0,0,0],
+
+            c_ins: [
                 inputNote.commitment,
+                0,
+                0,
+                0
+            ],
+
+            a_ins: [
+                inputNote.amount,
+                0,
+                0,
+                0
+            ],
+
+            r_ins: [
                 inputNote.randomness,
-                sender.zk.secretKey
-            ])
-        );
+                0,
+                0,
+                0
+            ],
 
-    console.log("\n========== NULLIFIER ==========");
+            roots: [
+                state.tree.root.toString(),
+                0,
+                0,
+                0
+            ],
 
-    console.log(nullifier);
+            pathElements: [
+                proof.siblings.map(
+                    x => x[0].toString()
+                ),
+                Array(20).fill(0),
+                Array(20).fill(0),
+                Array(20).fill(0)
+            ],
 
-    // encrypted notes
+            pathIndices: [
+                proof.pathIndices,
+                Array(20).fill(0),
+                Array(20).fill(0),
+                Array(20).fill(0)
+            ],
 
-    // change note
-    const encryptedNote1 =
-        encryptMessage(
-            JSON.stringify({
-                amount:
-                    change.toString(),
-                randomness:
-                    rChange
-            }),
-            sender.privateWallet.publicKey
-        );
+            nullifiers: [
+                nullifier,
+                0,
+                0,
+                0
+            ],
 
-    // relayer note
-    const encryptedNote2 =
-        encryptMessage(
-            JSON.stringify({
-                amount:
-                    fee.toString(),
-                randomness:
-                    rRelayer
-            }),
-            relayerWallet.privateWallet.publicKey
-        );
+            withdrawAmount:
+                withdrawAmount.toString(),
 
-    // circom input
-    const input = {
+            out_enabled:
+                [1,1],
 
-        pk:
-            sender.zk.publicKey,
+            a_outs: [
+                change.toString(),
+                fee.toString()
+            ],
 
-        sk:
-            sender.zk.secretKey,
+            r_outs: [
+                rChange,
+                rRelayer
+            ],
 
-        receiver:
-            ethers.BigNumber
-                .from(userSigner.address)
-                .toString(),
-        
-        changeReceiver:
-            sender.zk.publicKey,
+            c_outs: [
+                changeCommitment.decimal,
+                relayerCommitment.decimal
+            ],
 
-        relayer:
-            relayerWallet.zk.publicKey,
+            receivers: [
+                sender.zk.publicKey,
+                relayerWallet.zk.publicKey
+            ]
+        };
 
-        enabled:
-            [1,0,0,0],
+        console.log("\n========== WITHDRAW INPUT ==========");
 
-        c_ins: [
-            inputNote.commitment,
-            0,
-            0,
-            0
-        ],
+        console.log(input);
 
-        a_ins: [
-            inputNote.amount,
-            0,
-            0,
-            0
-        ],
-
-        r_ins: [
-            inputNote.randomness,
-            0,
-            0,
-            0
-        ],
-
-        roots: [
-            state.tree.root.toString(),
-            0,
-            0,
-            0
-        ],
-
-        pathElements: [
-            proof.siblings.map(
-                x => x[0].toString()
-            ),
-            Array(20).fill(0),
-            Array(20).fill(0),
-            Array(20).fill(0)
-        ],
-
-        pathIndices: [
-            proof.pathIndices,
-            Array(20).fill(0),
-            Array(20).fill(0),
-            Array(20).fill(0)
-        ],
-
-        nullifiers: [
-            nullifier,
-            0,
-            0,
-            0
-        ],
-
-        withdrawAmount:
-            withdrawAmount.toString(),
-
-        out_enabled:
-            [1,1],
-
-        a_outs: [
-            change.toString(),
-            fee.toString()
-        ],
-
-        r_outs: [
-            rChange,
-            rRelayer
-        ],
-
-        c_outs: [
-            changeCommitment.decimal,
-            relayerCommitment.decimal
-        ],
-
-        receivers: [
-            sender.zk.publicKey,
-            relayerWallet.zk.publicKey
-        ]
-    };
-
-    console.log("\n========== WITHDRAW INPUT ==========");
-
-    console.log(input);
-
-    // generate proof
-    const {
-        proof: zkProof,
-        publicSignals
-    } =
-        await snarkjs.groth16.fullProve(
-
-            input,
-
-            "build/withdraw_proof_js/withdraw_proof.wasm",
-
-            "build/withdraw_final.zkey"
-        );
-
-    console.log("\n========== PUBLIC SIGNALS ==========");
-
-    console.log(publicSignals);
-
-    // calldata
-    const calldata =
-        await snarkjs.groth16.exportSolidityCallData(
-            zkProof,
+        // generate proof
+        const {
+            proof: zkProof,
             publicSignals
-        );
+        } =
+            await snarkjs.groth16.fullProve(
 
-    const argv =
-        calldata
-            .replace(/["[\]\s]/g, "")
-            .split(",");
+                input,
 
-    const a = [
-        argv[0],
-        argv[1]
-    ];
+                "build/withdraw_proof_js/withdraw_proof.wasm",
 
-    const b = [
-        [argv[2], argv[3]],
-        [argv[4], argv[5]]
-    ];
+                "build/withdraw_final.zkey"
+            );
 
-    const c = [
-        argv[6],
-        argv[7]
-    ];
+        console.log("\n========== PUBLIC SIGNALS ==========");
 
-    console.log("\n========== WITHDRAW PROOF ==========");
+        console.log(publicSignals);
 
-    console.log(a);
-    console.log(b);
-    console.log(c);
+        // calldata
+        const calldata =
+            await snarkjs.groth16.exportSolidityCallData(
+                zkProof,
+                publicSignals
+            );
 
-    // root hex
-    const rootHex =
-        ethers.utils.hexZeroPad(
-            ethers.BigNumber
-                .from(state.tree.root.toString())
-                .toHexString(),
-            32
-        );
+        const argv =
+            calldata
+                .replace(/["[\]\s]/g, "")
+                .split(",");
 
-    // balances before
-    const before =
-        await ethers.provider.getBalance(
-            userSigner.address
-        );
+        const a = [
+            argv[0],
+            argv[1]
+        ];
 
-    console.log("\n========== BALANCE BEFORE ==========");
+        const b = [
+            [argv[2], argv[3]],
+            [argv[4], argv[5]]
+        ];
 
-    console.log(
-        ethers.utils.formatEther(before)
-    );
+        const c = [
+            argv[6],
+            argv[7]
+        ];
 
-    // withdraw
-    const tx =
-        await privatePool
-            .connect(relayerSigner)
-            .withdraw(
-                [{
-                    a,
-                    b,
-                    c,
+        console.log("\n========== WITHDRAW PROOF ==========");
 
-                    enabled:
-                        [1,0,0,0],
+        console.log(a);
+        console.log(b);
+        console.log(c);
 
-                    roots: [
-                        rootHex,
-                        ethers.constants.HashZero,
-                        ethers.constants.HashZero,
-                        ethers.constants.HashZero
-                    ],
+        // root hex
+        const rootHex =
+            ethers.utils.hexZeroPad(
+                ethers.BigNumber
+                    .from(state.tree.root.toString())
+                    .toHexString(),
+                32
+            );
 
-                    poolIds:
-                        [0,0,0,0],
-
-                    nullifiers: [
-                        ethers.utils.hexZeroPad(
-                            ethers.BigNumber
-                                .from(nullifier)
-                                .toHexString(),
-                            32
-                        ),
-                        ethers.constants.HashZero,
-                        ethers.constants.HashZero,
-                        ethers.constants.HashZero
-                    ],
-
-                    C1:
-                        changeCommitment.bytes32,
-
-                    C2:
-                        relayerCommitment.bytes32,
-
-                    encryptedNote1,
-                    encryptedNote2,
-
-                    withdrawAmount:
-                        withdrawAmount
-                }],
+        // balances before
+        const before =
+            await ethers.provider.getBalance(
                 userSigner.address
             );
 
-    const receipt =
-        await tx.wait();
+        console.log("\n========== BALANCE BEFORE ==========");
 
-    console.log("\n========== WITHDRAW RECEIPT ==========");
-
-    console.log(receipt);
-
-    // balances after
-    const after =
-        await ethers.provider.getBalance(
-            userSigner.address
+        console.log(
+            ethers.utils.formatEther(before)
         );
 
-    console.log("\n========== BALANCE AFTER ==========");
+        // withdraw
+        const tx =
+            await privatePool
+                .connect(relayerSigner)
+                .withdraw(
+                    [{
+                        a,
+                        b,
+                        c,
 
-    console.log(
-        ethers.utils.formatEther(after)
-    );
+                        enabled:
+                            [1,0,0,0],
 
-    // rebuild latest state
-    await rebuildWalletState();
-});
+                        roots: [
+                            rootHex,
+                            ethers.constants.HashZero,
+                            ethers.constants.HashZero,
+                            ethers.constants.HashZero
+                        ],
+
+                        poolIds:
+                            [0,0,0,0],
+
+                        nullifiers: [
+                            ethers.utils.hexZeroPad(
+                                ethers.BigNumber
+                                    .from(nullifier)
+                                    .toHexString(),
+                                32
+                            ),
+                            ethers.constants.HashZero,
+                            ethers.constants.HashZero,
+                            ethers.constants.HashZero
+                        ],
+
+                        C1:
+                            changeCommitment.bytes32,
+
+                        C2:
+                            relayerCommitment.bytes32,
+
+                        encryptedNote1,
+                        encryptedNote2,
+
+                        withdrawAmount:
+                            withdrawAmount
+                    }],
+                    userSigner.address
+                );
+
+        const receipt =
+            await tx.wait();
+
+        console.log("\n========== WITHDRAW RECEIPT ==========");
+
+        console.log(receipt);
+
+        // balances after
+        const after =
+            await ethers.provider.getBalance(
+                userSigner.address
+            );
+
+        console.log("\n========== BALANCE AFTER ==========");
+
+        console.log(
+            ethers.utils.formatEther(after)
+        );
+
+        // rebuild latest state
+        await rebuildWalletState();
+    });
 });
