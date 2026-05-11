@@ -26,6 +26,7 @@ const poolStates = {};
 const spentNullifiers =
     new Set();
 
+let isSyncing = false;
 
 
 // =====================================
@@ -86,6 +87,17 @@ async function initializePool(
 // =====================================
 
 async function syncPools() {
+
+    if (isSyncing) {
+
+        console.log(
+            "Sync already running"
+        );
+
+        return;
+    }
+
+    isSyncing = true;
 
     console.log(
         "\n========== SYNCING POOLS =========="
@@ -385,10 +397,11 @@ async function syncPools() {
     await noteState.save();
 
 
-
+    isSyncing = false;
     console.log(
         "\n========== POOL SYNC COMPLETE =========="
     );
+
 }
 
 
@@ -463,6 +476,8 @@ async function catchUpPools() {
 module.exports = {
 
     syncPools,
+
+    isSyncing,
 
     catchUpPools,
 

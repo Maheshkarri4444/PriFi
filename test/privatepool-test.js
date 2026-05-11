@@ -419,10 +419,10 @@ describe("PriFi Wallet Architecture", function () {
             "DepositVerifier",
             "0x9fE46736679d2D9a65F0992F2272dE9f3c7fa6e0"
         );
-            const code =
-                await ethers.provider.getCode(
-                    depositVerifier.address
-                );
+        const code =
+            await ethers.provider.getCode(
+                depositVerifier.address
+            );
         console.log("deposit verifier length:",code.length);
         // -------------------------
         // VALUES

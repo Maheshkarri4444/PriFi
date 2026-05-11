@@ -75,7 +75,7 @@ const PORT =
 
     setInterval(
         syncPools,
-        20000
+        10000
     );
 
     app.listen(PORT, () => {
