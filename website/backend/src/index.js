@@ -1,5 +1,12 @@
 require("dotenv").config();
 
+const {
+    syncPools,
+    catchUpPools
+} = require(
+    "./indexer/poolIndexer"
+);
+
 const express = require("express");
 const cors = require("cors");
 
@@ -44,6 +51,12 @@ const PORT =
 
     await initializeRelayer();
     await connectDB();
+    await catchUpPools();
+
+    setInterval(
+        syncPools,
+        20000
+    );
 
     app.listen(PORT, () => {
 
