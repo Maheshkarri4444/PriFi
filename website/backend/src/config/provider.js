@@ -12,6 +12,10 @@ const NullifierState =
     require("../models/NullifierState");
 
 const {
+    IncrementalMerkleTree
+} = require("@zk-kit/incremental-merkle-tree");
+
+const {
     decryptMessage
 } = require("../helpers/crypto");
 
@@ -75,7 +79,9 @@ async function buildWallet() {
         notes: [],
 
         balance:
-            ethers.parseEther("0")
+            ethers.parseEther("0"),
+
+        pools: {}
     };
 
 
@@ -88,10 +94,30 @@ async function buildWallet() {
         const latestRoot =
             pool.latestRoot;
 
+        const hash = (inputs) => {
+            return BigInt(
+                poseidon.F.toString(
+                    poseidon(inputs)
+                )
+            );
+        };
+
+        const tree =
+            new IncrementalMerkleTree(
+                hash,
+                20,
+                BigInt(0),
+                2
+            );
+
         for (
             const commitment
             of pool.commitments
         ) {
+
+            tree.insert(
+                BigInt(cmx)
+            );
 
             try {
 
@@ -170,6 +196,13 @@ async function buildWallet() {
 
             }
         }
+
+        walletState.pools[poolId] = {
+
+            tree,
+
+            latestRoot
+        };
     }
 
     console.log(
