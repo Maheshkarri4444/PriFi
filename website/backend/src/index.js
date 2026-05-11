@@ -3,6 +3,14 @@ require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 
+const relayerRoutes =
+    require("./routes/relayer");
+
+const {
+    initializeRelayer
+} = require("./config/provider");
+
+
 const app = express();
 
 app.use(cors());
@@ -16,12 +24,21 @@ app.get("/", (req, res) => {
     );
 });
 
+
+app.use("/api/relayer", relayerRoutes);
+
 const PORT =
     process.env.PORT || 4000;
 
-app.listen(PORT, () => {
+(async () => {
 
-    console.log(
-        `Server running on port ${PORT}`
-    );
-});
+    await initializeRelayer();
+
+    app.listen(PORT, () => {
+
+        console.log(
+            `Server running on port ${PORT}`
+        );
+    });
+
+})();

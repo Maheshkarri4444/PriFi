@@ -3,8 +3,7 @@ const { ethers } =
 
 require("dotenv").config();
 
-const provider =
-    new ethers.providers.JsonRpcProvider(
+const provider = new ethers.JsonRpcProvider(
         process.env.RPC_URL
     );
 
@@ -14,7 +13,33 @@ const wallet =
         provider
     );
 
+const {
+    generatePrivateWallet
+} = require("../helpers/privateWallet");
+
+
+let relayerWallet;
+
+async function initializeRelayer() {
+
+    const relayerSignature =
+        await wallet.signMessage(
+            "PriFi private financial dapp"
+        );
+
+    relayerWallet =
+        await generatePrivateWallet(
+            relayerSignature
+        );
+}
+
 module.exports = {
     provider,
-    wallet
+    wallet,
+
+    initializeRelayer,
+
+    get relayerWallet() {
+        return relayerWallet;
+    }
 };
