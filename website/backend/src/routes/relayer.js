@@ -7,6 +7,10 @@ const router =
 const provider =
     require("../config/provider");
 
+const {
+    buildWallet
+} = require("../config/provider");
+
 router.get(
     "/get",
     async (req, res) => {
@@ -32,6 +36,37 @@ router.get(
 
                 error:
                     "Failed to fetch relayer wallet"
+            });
+        }
+    }
+);
+
+router.get(
+    "/wallet",
+    async (req, res) => {
+
+        try {
+
+            const wallet =
+                await buildWallet();
+
+            return res.json({
+
+                balance:
+                    wallet.balance.toString(),
+
+                notes:
+                    wallet.notes
+            });
+
+        } catch (error) {
+
+            console.error(error);
+
+            return res.status(500).json({
+
+                error:
+                    "Failed to build relayer wallet"
             });
         }
     }
