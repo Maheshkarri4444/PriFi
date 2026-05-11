@@ -53,14 +53,12 @@ typechain/
 typechain-types/
 
 # zk proof files
-*.zkey
+
 *.ptau
 *.r1cs
 *.sym
 witness.wtns
 
-# generated wasm folders
-*_js/
 
 # frontend env
 frontend/.env*
