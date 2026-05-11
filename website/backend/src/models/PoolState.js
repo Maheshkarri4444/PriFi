@@ -15,6 +15,13 @@ const poolStateSchema =
             default: []
         },
 
+
+        encryptedNotes: {
+            type: Map,
+            of: String,
+            default: {}
+        },
+        
         roots: {
             type: [String],
             default: []

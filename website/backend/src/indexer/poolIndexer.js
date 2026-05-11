@@ -69,7 +69,9 @@ async function initializePool(
 
         latestRoot: null,
 
-        leafToIndex: {}
+        leafToIndex: {},
+
+        encryptedNotes: {}
     };
 
     console.log(
@@ -258,6 +260,8 @@ async function syncPools() {
             event.args.commitment
                 .toString();
 
+        const encryptedNote =
+            event.args.encryptedNote;
 
 
         // =================================
@@ -328,6 +332,9 @@ async function syncPools() {
             commitment
         ] = leafIndex;
 
+        state.encryptedNotes[
+            commitment
+        ] = encryptedNote;
 
 
         // =================================
@@ -350,6 +357,10 @@ async function syncPools() {
             leafIndex
         );
 
+        dbPool.encryptedNotes.set(
+            commitment,
+            encryptedNote
+        );
         dbPool.lastProcessedBlock =
             event.blockNumber;
 
