@@ -7,6 +7,7 @@ const {
     "./indexer/poolIndexer"
 );
 
+
 const express = require("express");
 const cors = require("cors");
 
@@ -15,6 +16,8 @@ const connectDB =
 
 const relayerRoutes =
     require("./routes/relayer");
+
+const stateRoutes = require("./routes/stateRoutes");
 
 const {
     initializeRelayer
@@ -43,6 +46,7 @@ app.use(
     "/api/users",
     userRoutes
 );
+app.use("/api/state/",stateRoutes);
 
 const PORT =
     process.env.PORT || 4000;

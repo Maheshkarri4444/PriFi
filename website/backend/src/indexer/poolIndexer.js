@@ -434,7 +434,7 @@ async function catchUpPools() {
 
         // fully synced
         if (
-            currentBlock >= latestBlock
+            latestBlock - currentBlock < 50
         ) {
 
             console.log(
