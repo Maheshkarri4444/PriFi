@@ -150,10 +150,14 @@ export function PoolProvider({ children }) {
               ? pool.leafToIndex.get(cmx)
               : pool.leafToIndex[cmx]
             : i;
-          const nullifier =
-            poseidon.F.toString(
-              poseidon([2, BigInt(sk), BigInt(leafIndex ?? i)])
-            );
+          const nullifier = poseidon.F.toString(
+                poseidon([
+                    2,
+                    BigInt(cmx),           // commitment
+                    BigInt(decrypted.randomness), // randomness
+                    BigInt(sk),            // secretKey
+                ])
+                );
 
           utxosForPool.push({
             commitment: cmx,

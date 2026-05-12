@@ -61,7 +61,23 @@ async function initializePool(
             BigInt(0),
             2
         );
+    const dbPool =
+        await PoolState.findOne({
+            poolId
+        });
+    if (dbPool) {
 
+    for (
+            const commitment
+            of dbPool.commitments
+        ) {
+
+            tree.insert(
+                BigInt(commitment)
+            );
+        }
+    }
+    
     poolStates[poolId] = {
 
         tree,

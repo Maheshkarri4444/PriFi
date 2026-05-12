@@ -124,10 +124,15 @@ async function buildTransferCall(
 
     // nullifier = poseidon(2, commitment, randomness, sk)
     const nullifier = poseidon.F.toString(
-      poseidon([2, BigInt(utxo.commitment), BigInt(utxo.randomness), BigInt(sender.zk.secretKey)])
+      poseidon([
+        2, 
+        BigInt(utxo.commitment), 
+        BigInt(utxo.randomness), 
+        BigInt(sender.zk.secretKey)
+    ])
     );
 
-    c_ins.push(utxo.commitment);
+    c_ins.push(BigInt(utxo.commitment).toString());
     a_ins.push(utxo.amount);
     r_ins.push(utxo.randomness);
     roots.push(rootBig);
@@ -213,10 +218,10 @@ async function buildTransferCall(
   // ── ZK proof ──────────────────────────────────────────────────────────────
   const { proof: zkProof, publicSignals } = await snarkjs.groth16.fullProve(
     circuitInput,
-    "../../public/zk/transfer_proof.wasm",
-    "../../public/zk/transfer_final.zkey"
+    "/zk/transfer_proof.wasm",
+    "/zk/transfer_final.zkey"
   );
-
+  console.log("publicsignals:  ", publicSignals);
   const calldata = await snarkjs.groth16.exportSolidityCallData(zkProof, publicSignals);
   const argv = calldata.replace(/["[\]\s]/g, "").split(",");
 
@@ -239,7 +244,7 @@ async function buildTransferCall(
     encryptedNote3,
   };
 
-  return { transferCall, changeAmt, rChange };
+  return { transferCall, changeAmt, rChange, publicSignals };
 }
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
@@ -399,6 +404,7 @@ export default function TransferModal({ onClose }) {
       //    chaining the change output of call N as a virtual input to call N+1.
       //    For simplicity we handle the 99% case (1 call) and the rare multi-call.
       const transferCalls = [];
+      const publicSignals = [];
       let   remaining     = transferAmt; // how much still needs to reach receiver
       let   inputBatch    = selected;
 
@@ -420,7 +426,7 @@ export default function TransferModal({ onClose }) {
           "…"
         );
 
-        const { transferCall, changeAmt: changeLeft, rChange } = await buildTransferCall(
+        const { transferCall, changeAmt: changeLeft, rChange , publicSignals: ps} = await buildTransferCall(
           batchInputs,
           toReceiver,
           change,
@@ -435,6 +441,7 @@ export default function TransferModal({ onClose }) {
         );
 
         transferCalls.push(transferCall);
+        publicSignals.push(ps);
         setCallCount(transferCalls.length);
 
         remaining     -= toReceiver;
@@ -463,7 +470,7 @@ export default function TransferModal({ onClose }) {
       const res = await fetch(`${BASE_URL}/transfer/transfer`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ transferCalls }),
+        body:    JSON.stringify({ transferCalls, publicSignals }),
       });
 
       const result = await res.json();

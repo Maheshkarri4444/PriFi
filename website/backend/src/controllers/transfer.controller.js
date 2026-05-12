@@ -33,6 +33,7 @@ const transferVKey =
 function buildPublicSignals(
     call
 ) {
+    console.log("builidn publicSignals for call: ",call);
 
     return [
 
@@ -96,7 +97,9 @@ async function transferController(
             transferCalls
         } = req.body;
 
-
+        const {
+            publicSignals
+        } = req.body;
 
         // =====================================
         // VALIDATION
@@ -141,17 +144,24 @@ async function transferController(
         // =====================================
 
         for (
-            const call
-            of transferCalls
+            let i = 0;
+            i < transferCalls.length;
+            i++
         ) {
+
+            const call =
+                transferCalls[i];
 
             const proof =
                 buildProof(call);
 
-            const publicSignals =
-                buildPublicSignals(
-                    call
-                );
+            const signals =
+                publicSignals[i];
+
+            console.log(
+                "frontend public signals:",
+                signals
+            );
 
             const verified =
                 await snarkjs.groth16
@@ -159,7 +169,7 @@ async function transferController(
 
                         transferVKey,
 
-                        publicSignals,
+                        signals,
 
                         proof
                     );
@@ -176,8 +186,6 @@ async function transferController(
                     });
             }
         }
-
-
 
         // =====================================
         // NULLIFIER CHECK
