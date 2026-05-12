@@ -7,12 +7,15 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
 import { WalletProvider } from "./context/WalletContext";
+import { PoolProvider } from "./context/PoolContext";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
     <BrowserRouter>
       <WalletProvider>
-        <App />
+        <PoolProvider>
+          <App />
+        </PoolProvider>
       </WalletProvider>
     </BrowserRouter>
   </React.StrictMode>

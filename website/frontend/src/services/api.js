@@ -1,4 +1,4 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
+export const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:4000/api";
 
 export async function getAllUsers() {
   const res = await fetch(`${BASE_URL}/users/all`);

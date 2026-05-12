@@ -3,6 +3,7 @@ import { useWallet } from "../context/WalletContext";
 import Header from "../components/Header";
 import WalletDetails from "../components/WalletDetails";
 import ActionModal from "../components/ActionModal";
+import { usePool } from "../context/PoolContext";
 
 const ACTIONS = [
   {
@@ -112,6 +113,7 @@ function WalletChangedOverlay({ onGoHome }) {
 export default function WalletPage() {
   const { userData, address, walletKeys, walletChanged, disconnectWallet } = useWallet();
   const [activeModal, setActiveModal] = useState(null);
+  const { formattedBalance, loading, lastSyncedAt } = usePool();  
 
   const handleGoHome = () => {
     disconnectWallet();
@@ -158,15 +160,20 @@ export default function WalletPage() {
             <div>
               <p className="font-display text-xs text-white/60 uppercase tracking-widest mb-1">Balance</p>
               <p className="font-display text-4xl text-white">
-                0.0 <span className="text-prifi-600 text-2xl">MON</span>
+                {formattedBalance}{" "}
+                <span className="text-prifi-600 text-2xl">MON</span>
               </p>
             </div>
             <div className="flex flex-col items-end gap-1">
               <span className="flex items-center gap-1.5 font-display text-xs text-prifi-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-prifi-600 animate-pulse" />
-                Live
+                <span className={`w-1.5 h-1.5 rounded-full bg-prifi-600 ${loading ? "animate-ping" : "animate-pulse"}`} />
+                {loading ? "Syncing" : "Live"}
               </span>
-              <span className="text-xs font-body text-white/60">Currently building</span>
+              {lastSyncedAt && (
+                <span className="text-xs font-body text-white/60">
+                  {new Date(lastSyncedAt).toLocaleTimeString()}
+                </span>
+              )}
             </div>
           </div>
         </div>

@@ -1,9 +1,11 @@
 import React from "react";
 import { useWallet } from "../context/WalletContext";
 import { useNavigate } from "react-router-dom";
+import { usePool } from "../context/PoolContext";
 
 export default function Header() {
   const { address, userData, disconnectWallet } = useWallet();
+  const { formattedBalance } = usePool();  
   const navigate = useNavigate();
 
   const handleDisconnect = () => {
@@ -30,9 +32,11 @@ export default function Header() {
             {/* Balance badge */}
             <div className="hidden sm:flex items-center gap-2 px-3 py-1 border border-noir-600 bg-noir-800">
               <span className="w-1.5 h-1.5 rounded-full bg-prifi-600 animate-pulse" />
-              <span className="font-display text-xs text-prifi-400">0.0 MON</span>
-              <span className="text-white/60 text-xs font-body">· building</span>
+              <span className="font-display text-xs text-prifi-400">
+                {formattedBalance} MON          {/* ← live balance */}
+              </span>
             </div>
+
 
             {/* Username */}
             {userData?.name && (
