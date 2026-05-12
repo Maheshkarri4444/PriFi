@@ -4,7 +4,7 @@ import { useWallet } from "../context/WalletContext";
 import { usePool } from "../context/PoolContext";
 import { fetchRelayerKeys, executeDeposit } from "../services/deposit";
 
-const MIN_FEE_ETH = "0.1";
+const MIN_FEE_ETH = "0.5";
 const MIN_FEE_WEI = ethers.parseEther(MIN_FEE_ETH);
 
 // ── step indicator ───────────────────────────────────────────────────────────
@@ -159,7 +159,7 @@ export default function DepositModal({ onClose }) {
         },
       });
 
-      setStep(3);
+      setStep(4);
       setTxHash(receipt.hash);
       setStatusMsg("Deposit confirmed!");
 
@@ -173,8 +173,8 @@ export default function DepositModal({ onClose }) {
     }
   };
 
-  const isDone = step === 3;
-  const isBusy = step >= 0 && step < 3;
+  const isDone = step === 4;
+  const isBusy = step >= 0 && step < 4;
   const userAmount = (() => {
     try {
       const d = ethers.parseEther(depositStr || "0");
