@@ -1,5 +1,6 @@
 import React from "react";
 import { useWallet } from "../context/WalletContext";
+import DepositModal from "./DepositModal"; 
 
 const ICONS = {
   deposit: (
@@ -23,6 +24,11 @@ const ICONS = {
 export default function ActionModal({ type, onClose }) {
   const { allUsers } = useWallet();
   const isTransfer = type === "transfer";
+
+  if (type === "deposit") {
+    return <DepositModal onClose={onClose} />;
+  }
+
 
   const titles = {
     deposit: "Deposit Funds",
