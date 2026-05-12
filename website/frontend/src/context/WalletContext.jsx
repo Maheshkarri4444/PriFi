@@ -114,6 +114,7 @@ export function WalletProvider({ children }) {
       }
       try {
         await signAndGenerateKeys(storedAddr);
+        await fetchAllUsers();
       } catch {
         // User rejected — stay on page without keys
       }

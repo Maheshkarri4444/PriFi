@@ -1,6 +1,7 @@
 import React from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useWallet } from "./context/WalletContext";
+import { PoolProvider } from "./context/PoolContext";
 import HomePage from "./pages/HomePage";
 import WalletPage from "./pages/WalletPage";
 import UsernameModal from "./components/UsernameModal";
@@ -9,7 +10,7 @@ export default function App() {
   const { address, needsUsername, walletChanged } = useWallet();
 
   return (
-    <>
+    <PoolProvider>
       {needsUsername && <UsernameModal />}
       <Routes>
         <Route
@@ -26,6 +27,6 @@ export default function App() {
         />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
-    </>
+    </PoolProvider>
   );
 }

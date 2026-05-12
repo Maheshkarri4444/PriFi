@@ -4,7 +4,8 @@ import Header from "../components/Header";
 import WalletDetails from "../components/WalletDetails";
 import ActionModal from "../components/ActionModal";
 import { usePool } from "../context/PoolContext";
-
+import { useMemo } from "react";
+import { ethers } from "ethers";
 const ACTIONS = [
   {
     id: "deposit",
@@ -113,7 +114,12 @@ function WalletChangedOverlay({ onGoHome }) {
 export default function WalletPage() {
   const { userData, address, walletKeys, walletChanged, disconnectWallet } = useWallet();
   const [activeModal, setActiveModal] = useState(null);
-  const { formattedBalance, loading, lastSyncedAt } = usePool();  
+  const { allUnspentUTXOs, syncing, lastSyncedAt } = usePool();  
+
+  const formattedBalance = useMemo(() => {
+    const total = allUnspentUTXOs.reduce((s, u) => s + BigInt(u.amount), BigInt(0));
+    return parseFloat(ethers.formatEther(total)).toFixed(4);
+  }, [allUnspentUTXOs]);
 
   const handleGoHome = () => {
     disconnectWallet();
@@ -166,8 +172,8 @@ export default function WalletPage() {
             </div>
             <div className="flex flex-col items-end gap-1">
               <span className="flex items-center gap-1.5 font-display text-xs text-prifi-600">
-                <span className={`w-1.5 h-1.5 rounded-full bg-prifi-600 ${loading ? "animate-ping" : "animate-pulse"}`} />
-                {loading ? "Syncing" : "Live"}
+                <span className={`w-1.5 h-1.5 rounded-full bg-prifi-600 ${syncing ? "animate-ping" : "animate-pulse"}`} />
+                {syncing ? "Syncing" : "Live"}
               </span>
               {lastSyncedAt && (
                 <span className="text-xs font-body text-white/60">

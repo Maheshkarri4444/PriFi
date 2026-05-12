@@ -16,7 +16,7 @@ const connectDB =
 
 const relayerRoutes =
     require("./routes/relayer");
-
+const transferRoutes = require("./routes/transferRoutes");
 const stateRoutes = require("./routes/stateRoutes");
 
 const {
@@ -63,6 +63,7 @@ app.use(
     userRoutes
 );
 app.use("/api/state/",stateRoutes);
+app.use("/api/transfer/",transferRoutes);
 
 const PORT =
     process.env.PORT || 4000;
