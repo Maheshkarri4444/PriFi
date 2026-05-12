@@ -12,10 +12,9 @@ const {
 } = require("../helpers/crypto");
 
 const {
-    relayerWallet,
-    provider,
     wallet
 } = require("../config/provider");
+const provider = require("../config/provider");
 
 const {
     spentNullifiers
@@ -29,28 +28,70 @@ const transferVKey =
 // =====================================
 // BUILD PUBLIC SIGNALS
 // =====================================
+function buildPublicSignals(call) {
 
-function buildPublicSignals(
-    call
-) {
-    console.log("builidn publicSignals for call: ",call);
+    const publicSignals = [];
 
-    return [
+    // relayer zk pubkey
+    publicSignals.push(
+        provider.relayerWallet.zk.publicKey.toString()
+    );
 
-        ...call.enabled,
+    // enabled
+    for (const e of call.enabled) {
+        publicSignals.push(
+            e.toString()
+        );
+    }
 
-        ...call.roots,
+    // roots
+    for (const root of call.roots) {
+        publicSignals.push(
+            BigInt(root).toString()
+        );
+    }
 
-        ...call.poolIds,
+    // nullifiers
+    for (const n of call.nullifiers) {
+        publicSignals.push(
+            BigInt(n).toString()
+        );
+    }
 
-        ...call.nullifiers,
+    // output enabled
+    publicSignals.push(
+        call.C1 !== ethers.ZeroHash
+            ? "1"
+            : "0"
+    );
 
-        call.C1,
-        call.C2,
-        call.C3
-    ];
+    publicSignals.push(
+        call.C2 !== ethers.ZeroHash
+            ? "1"
+            : "0"
+    );
+
+    publicSignals.push(
+        call.C3 !== ethers.ZeroHash
+            ? "1"
+            : "0"
+    );
+
+    // commitments
+    publicSignals.push(
+        BigInt(call.C1).toString()
+    );
+
+    publicSignals.push(
+        BigInt(call.C2).toString()
+    );
+
+    publicSignals.push(
+        BigInt(call.C3).toString()
+    );
+
+    return publicSignals;
 }
-
 
 
 // =====================================
@@ -98,7 +139,7 @@ async function transferController(
         } = req.body;
 
         const {
-            publicSignals
+            zkProofs
         } = req.body;
 
         // =====================================
@@ -152,16 +193,15 @@ async function transferController(
             const call =
                 transferCalls[i];
 
-            const proof =
-                buildProof(call);
+            const proof = zkProofs[i];
 
             const signals =
-                publicSignals[i];
+                buildPublicSignals(call);
 
-            console.log(
-                "frontend public signals:",
-                signals
-            );
+            // console.log(
+            //     "frontend public signals:",
+            //     signals
+            // );
 
             const verified =
                 await snarkjs.groth16
@@ -245,17 +285,17 @@ async function transferController(
             const call
             of transferCalls
         ) {
+            // console.log("relayer wallet:",provider.relayerWallet);
 
             try {
+                // console.log("encrypted note of relayer: ",call.encryptedNote3);
 
                 const decrypted =
                     decryptMessage(
 
                         call.encryptedNote3,
 
-                        relayerWallet
-                            .privateWallet
-                            .privateKey
+                        provider.relayerWallet.privateWallet.privateKey,
                     );
 
                 const parsed =
@@ -299,12 +339,11 @@ async function transferController(
 
 
         const feeData =
-            await provider
+            await provider.provider
                 .getFeeData();
 
         const gasPrice =
             feeData.gasPrice;
-
         if (!gasPrice) {
 
             return res.status(500)
@@ -323,7 +362,7 @@ async function transferController(
             gasEstimate *
             gasPrice;
 
-
+        console.log("estimated cost",estimatedCost);
 
         // =====================================
         // PROFITABILITY CHECK

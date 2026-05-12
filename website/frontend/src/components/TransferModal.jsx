@@ -10,7 +10,7 @@ import { BASE_URL } from "../services/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MAX_INPUTS = 4;
-const FEE_PER_CALL = ethers.parseEther("0.2"); // relayer fee per TransferCall
+const FEE_PER_CALL = ethers.parseEther("0.5"); // relayer fee per TransferCall
 const ZERO_HASH = ethers.ZeroHash;
 const ZERO_BIG = BigInt(0);
 
@@ -172,11 +172,12 @@ async function buildTransferCall(
     JSON.stringify({ amount: changeAmt.toString(), randomness: rChange }),
     sender.privateWallet.publicKey
   );
+  console.log("relayer",relayer);
   const encryptedNote3 = encryptMessage(
     JSON.stringify({ amount: feeAmt.toString(), randomness: rRelayer }),
     relayer.publicKey
   );
-
+  console.log("encrypted Note3:",encryptedNote3);
   // ── circom input ──────────────────────────────────────────────────────────
   const circuitInput = {
     sk:      sender.zk.secretKey,
@@ -244,7 +245,7 @@ async function buildTransferCall(
     encryptedNote3,
   };
 
-  return { transferCall, changeAmt, rChange, publicSignals };
+  return { transferCall, changeAmt, rChange, zkProof };
 }
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
@@ -404,7 +405,7 @@ export default function TransferModal({ onClose }) {
       //    chaining the change output of call N as a virtual input to call N+1.
       //    For simplicity we handle the 99% case (1 call) and the rare multi-call.
       const transferCalls = [];
-      const publicSignals = [];
+      const zkProofs = [];
       let   remaining     = transferAmt; // how much still needs to reach receiver
       let   inputBatch    = selected;
 
@@ -426,7 +427,7 @@ export default function TransferModal({ onClose }) {
           "…"
         );
 
-        const { transferCall, changeAmt: changeLeft, rChange , publicSignals: ps} = await buildTransferCall(
+        const { transferCall, changeAmt: changeLeft, rChange , zkProof } = await buildTransferCall(
           batchInputs,
           toReceiver,
           change,
@@ -441,7 +442,7 @@ export default function TransferModal({ onClose }) {
         );
 
         transferCalls.push(transferCall);
-        publicSignals.push(ps);
+        zkProofs.push(zkProof);
         setCallCount(transferCalls.length);
 
         remaining     -= toReceiver;
@@ -470,7 +471,7 @@ export default function TransferModal({ onClose }) {
       const res = await fetch(`${BASE_URL}/transfer/transfer`, {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ transferCalls, publicSignals }),
+        body:    JSON.stringify({ transferCalls, zkProofs }),
       });
 
       const result = await res.json();
