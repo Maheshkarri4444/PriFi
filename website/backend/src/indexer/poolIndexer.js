@@ -80,6 +80,27 @@ async function initializePool(
     );
 }
 
+async function startSyncLoop() {
+
+    while (true) {
+
+        try {
+
+            await syncPools();
+
+        } catch (err) {
+
+            console.error(
+                "Sync failed:",
+                err
+            );
+        }
+
+        await new Promise(resolve =>
+            setTimeout(resolve, 10000)
+        );
+    }
+}
 
 
 // =====================================
@@ -479,6 +500,7 @@ module.exports = {
 
     isSyncing,
 
+    startSyncLoop,
     catchUpPools,
 
     poolStates,

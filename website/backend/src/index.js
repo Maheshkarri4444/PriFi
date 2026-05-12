@@ -1,7 +1,7 @@
 require("dotenv").config();
 
 const {
-    syncPools,
+    startSyncLoop,
     catchUpPools
 } = require(
     "./indexer/poolIndexer"
@@ -73,11 +73,7 @@ const PORT =
     await connectDB();
     await catchUpPools();
 
-    setInterval(
-        syncPools,
-        10000
-    );
-
+    startSyncLoop(),
     app.listen(PORT, () => {
 
         console.log(
