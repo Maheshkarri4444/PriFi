@@ -392,7 +392,7 @@ function FeeBreakdown({ parsedAmt, feeResult, totalAvailable, isRetry }) {
             Fee is{" "}
             <span className="text-crimson-400">{ethers.formatEther(totalFee)} MON</span>
             {" "}for {numCalls} transfer call{numCalls > 1 ? "s" : ""}.
-            Decrease the amount or deposit more funds.
+            Decrease the Receiver's amount or Deposit more funds.
           </p>
         </div>
       )}
@@ -775,7 +775,7 @@ export default function TransferModal({ onClose }) {
                         <div className="px-3 py-2.5 bg-crimson-400/5">
                           <p className="font-display text-xs text-crimson-400 mb-1">Still insufficient</p>
                           <p className="font-body text-xs text-white/50">
-                            Retry fee exceeds your balance. Decrease the amount or deposit more funds.
+                            Retry fee exceeds your balance. Decrease the Receiver's amount or Deposit more funds.
                           </p>
                         </div>
                       )}

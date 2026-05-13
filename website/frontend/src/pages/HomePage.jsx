@@ -67,11 +67,11 @@ export default function HomePage() {
 
         {/* Chain badges */}
         <div className="flex items-center gap-3 mb-8 relative">
-          <span className="font-display text-white/60 text-xs tracking-widest text-white/60 uppercase border border-noir-700 px-3 py-1">
+          <span className="font-display text-xs tracking-widest text-white/60 uppercase border border-noir-700 px-3 py-1">
             Monad Testnet
           </span>
           <span className="w-1 h-1 bg-prifi-600 rounded-full" />
-          <span className="font-display text-white/60 text-xs tracking-widest text-white/60 uppercase border border-noir-700 px-3 py-1">
+          <span className="font-display text-xs tracking-widest text-white/60 uppercase border border-noir-700 px-3 py-1">
             Ethereum Testnet
           </span>
         </div>
@@ -82,7 +82,7 @@ export default function HomePage() {
             <span className="text-prifi-400 glow-text">dark</span>
             <span className="text-prifi-600">.</span>
           </h1>
-          <p className="font-body text-lg text-white/60 max-w-xl text-white/60 mx-auto mb-12 leading-relaxed">
+          <p className="font-body text-lg max-w-xl text-white/60 mx-auto mb-12 leading-relaxed">
             PriFi is a private wallet protocol on Monad and Ethereum. Deposit,
             transfer, and withdraw your funds without leaving a trace — backed
             by zero-knowledge proofs.
@@ -103,7 +103,7 @@ export default function HomePage() {
               className="px-8 py-4 border border-noir-700 bg-noir-900/50 text-center"
             >
               <p className="font-display text-sm text-white">{s.value}</p>
-              <p className="font-body text-xs text-white/60 text-white/60 mt-0.5">{s.label}</p>
+              <p className="font-body text-xs  text-white/60 mt-0.5">{s.label}</p>
             </div>
           ))}
         </div>
