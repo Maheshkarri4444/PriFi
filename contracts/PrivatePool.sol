@@ -64,8 +64,7 @@ contract PrivatePool {
     uint32 constant MAX_INPUTS = 4;
 
     // zero commitment - used in the place of empty commitment (wallet must use same convention)
-    bytes32 public constant ZERO_COMMITMENT =
-        bytes32(uint256(keccak256("ZERO_COMMITMENT")));
+    bytes32 public constant ZERO_COMMITMENT = bytes32(0);
 
     //global state
     mapping(bytes32 => bool) public nullifierSpent;

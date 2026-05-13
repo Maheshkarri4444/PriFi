@@ -10,9 +10,10 @@ import { BASE_URL } from "../services/api";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const MAX_INPUTS = 4;
-const FEE_PER_CALL = ethers.parseEther("0.5"); // relayer fee per TransferCall
+// Single flat fee for the entire transfer regardless of how many calls are needed
+const TOTAL_FEE = ethers.parseEther("0.5");
 const ZERO_HASH = ethers.ZeroHash;
-const ZERO_BIG = BigInt(0);
+const ZERO_BIG  = BigInt(0);
 
 // ─── Poseidon singleton ───────────────────────────────────────────────────────
 let _poseidon = null;
@@ -22,28 +23,19 @@ async function getPoseidon() {
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-/** bytes32 hex from a BigInt / decimal string */
 function toBytes32(value) {
   return ethers.zeroPadValue(ethers.toBeHex(BigInt(value)), 32);
 }
 
-/** random 31-byte bigint string */
 function randomR() {
   return ethers.toBigInt(ethers.randomBytes(31)).toString();
 }
 
-/**
- * Greedily pick UTXOs until their sum >= target.
- * Returns null if impossible.
- */
 function selectUTXOs(unspent, targetBigInt) {
-  // sort descending by amount so we use fewer notes
-  console.log("unspent: ",unspent);
-    const sorted = [...unspent].sort((a, b) => {
+  const sorted = [...unspent].sort((a, b) => {
     const diff = BigInt(b.amount) - BigInt(a.amount);
     return diff > 0n ? 1 : diff < 0n ? -1 : 0;
-    });
+  });
   const selected = [];
   let acc = ZERO_BIG;
   for (const utxo of sorted) {
@@ -55,53 +47,95 @@ function selectUTXOs(unspent, targetBigInt) {
 }
 
 /**
- * Build one TransferCall object + its ZK proof.
+ * Plan how many TransferCalls are needed and what each one does.
  *
- * inputs      – array of 1-4 UTXO objects (from PoolContext)
- * receiverAmt – BigInt amount going to receiver (0 if this is a change-only call)
- * changeAmt   – BigInt change back to sender
- * feeAmt      – BigInt relayer fee
- * receiver    – { zkPublicKey, privateWalletPublicKey }
- * sender      – walletKeys object from WalletContext
- * relayer     – { zkPublicKey, publicKey }
- * getMerkleProof – from PoolContext
+ * Key insight: the fee (0.5 MON total) only goes into the LAST call.
+ * Earlier calls consume their inputs fully as: receiver portion + change.
+ * This guarantees sum(inputs) === sum(outputs) for every call independently.
+ *
+ * Example: 5 UTXOs [3.5, 1.5, 1.3, 0.5, 0.23], transferAmt=4, fee=0.5
+ *   Batch 1 (UTXOs 0-3, total=6.8): toReceiver=4, change=2.8, fee=0  → sum=6.8 ✓
+ *   Batch 2 (UTXO 4, total=0.23):   toReceiver=0, change=0, fee=0.23?
+ *   → This doesn't work cleanly for sub-fee batches.
+ *
+ * Better approach: greedily select just enough UTXOs, so 1 call covers everything.
+ * selectUTXOs already does this. planCalls handles the rare multi-call case where
+ * we needed more than 4 UTXOs.
  */
+function planCalls(selectedUTXOs, transferAmt, totalFee) {
+  const allInputs = [...selectedUTXOs];
+  const batches   = [];
+  while (allInputs.length > 0) batches.push(allInputs.splice(0, MAX_INPUTS));
+
+  const plans = [];
+  let receiverRemaining = transferAmt;
+
+  for (let i = 0; i < batches.length; i++) {
+    const batch     = batches[i];
+    const isLast    = i === batches.length - 1;
+    const batchTotal = batch.reduce((s, u) => s + BigInt(u.amount), ZERO_BIG);
+
+    // Only the last call carries the fee
+    const feeAmt = isLast ? totalFee : ZERO_BIG;
+
+    // How much receiver gets from this batch
+    const maxForReceiver = batchTotal - feeAmt;
+    if (maxForReceiver < ZERO_BIG) {
+      throw new Error(
+        `Batch ${i + 1} total (${ethers.formatEther(batchTotal)} MON) is less than ` +
+        `the fee (${ethers.formatEther(feeAmt)} MON). Use a larger amount or consolidate notes first.`
+      );
+    }
+
+    const toReceiver = receiverRemaining <= maxForReceiver
+      ? receiverRemaining
+      : maxForReceiver;
+
+    const changeAmt = batchTotal - toReceiver - feeAmt;
+
+    receiverRemaining -= toReceiver;
+
+    plans.push({ inputs: batch, receiverAmt: toReceiver, changeAmt, feeAmt });
+  }
+
+  if (receiverRemaining > ZERO_BIG) {
+    throw new Error("Selected UTXOs not sufficient to cover transfer amount.");
+  }
+
+  return plans;
+}
+
+// ─── Build a single TransferCall + ZK proof ───────────────────────────────────
 async function buildTransferCall(
   inputs,
   receiverAmt,
   changeAmt,
   feeAmt,
-  receiver,
-  sender,
-  relayer,
+  receiver,   // { zkPublicKey, privateWalletPublicKey }
+  sender,     // walletKeys from WalletContext
+  relayer,    // { zkPublicKey, publicKey }
   getMerkleProof
 ) {
   const poseidon = await getPoseidon();
 
-  // pad inputs to MAX_INPUTS with dummy zeroes
+  // Pad to MAX_INPUTS with null dummies
   const padded = [...inputs];
-  while (padded.length < MAX_INPUTS) {
-    padded.push(null); // dummy
-  }
+  while (padded.length < MAX_INPUTS) padded.push(null);
 
-  // ── enabled flags ──────────────────────────────────────────────────────────
-  const enabled = padded.map((u) => (u ? 1 : 0));
-
-  // ── merkle proofs & nullifiers ────────────────────────────────────────────
-  const c_ins        = [];
-  const a_ins        = [];
-  const r_ins        = [];
-  const roots        = [];
-  const pathElements = [];
-  const pathIndices  = [];
-  const nullifiers   = [];
-  const poolIds      = [];
-  const rootsBytes32 = [];
+  const enabled           = padded.map((u) => (u ? 1 : 0));
+  const c_ins             = [];
+  const a_ins             = [];
+  const r_ins             = [];
+  const roots             = [];
+  const pathElements      = [];
+  const pathIndices       = [];
+  const nullifiers        = [];
+  const poolIds           = [];
+  const rootsBytes32      = [];
   const nullifiersBytes32 = [];
 
   for (const utxo of padded) {
     if (!utxo) {
-      // dummy slot
       c_ins.push("0");
       a_ins.push("0");
       r_ins.push("0");
@@ -110,26 +144,23 @@ async function buildTransferCall(
       pathIndices.push(Array(20).fill(0));
       nullifiers.push("0");
       poolIds.push(0);
-      rootsBytes32.push(ZERO_HASH);
-      nullifiersBytes32.push(ZERO_HASH);
+      rootsBytes32.push(ethers.ZeroHash);
+      nullifiersBytes32.push(ethers.ZeroHash);
       continue;
     }
 
-    // merkle proof
     const merkleProof = getMerkleProof(utxo.poolId, utxo.leafIndex);
-    console.log("merkle proof: ",merkleProof);
-    if (!merkleProof) throw new Error(`No Merkle proof for leaf ${utxo.leafIndex} in pool ${utxo.poolId}`);
+    if (!merkleProof)
+      throw new Error(`No Merkle proof for leaf ${utxo.leafIndex} in pool ${utxo.poolId}`);
 
-    const rootBig = merkleProof.root.toString();
-
-    // nullifier = poseidon(2, commitment, randomness, sk)
+    const rootBig  = merkleProof.root.toString();
     const nullifier = poseidon.F.toString(
       poseidon([
-        2, 
-        BigInt(utxo.commitment), 
-        BigInt(utxo.randomness), 
-        BigInt(sender.zk.secretKey)
-    ])
+        2,
+        BigInt(utxo.commitment),
+        BigInt(utxo.randomness),
+        BigInt(sender.zk.secretKey),
+      ])
     );
 
     c_ins.push(BigInt(utxo.commitment).toString());
@@ -144,7 +175,7 @@ async function buildTransferCall(
     nullifiersBytes32.push(toBytes32(nullifier));
   }
 
-  // ── output commitments ────────────────────────────────────────────────────
+  // Output randomness
   const rReceiver = randomR();
   const rChange   = randomR();
   const rRelayer  = randomR();
@@ -163,7 +194,6 @@ async function buildTransferCall(
     feeAmt.toString(), rRelayer, relayer.zkPublicKey
   );
 
-  // ── encrypt notes ─────────────────────────────────────────────────────────
   const encryptedNote1 = encryptMessage(
     JSON.stringify({ amount: receiverAmt.toString(), randomness: rReceiver }),
     receiver.privateWalletPublicKey
@@ -172,18 +202,15 @@ async function buildTransferCall(
     JSON.stringify({ amount: changeAmt.toString(), randomness: rChange }),
     sender.privateWallet.publicKey
   );
-  console.log("relayer",relayer);
   const encryptedNote3 = encryptMessage(
     JSON.stringify({ amount: feeAmt.toString(), randomness: rRelayer }),
     relayer.publicKey
   );
-  console.log("encrypted Note3:",encryptedNote3);
-  // ── circom input ──────────────────────────────────────────────────────────
+
   const circuitInput = {
     sk:      sender.zk.secretKey,
     pk:      sender.zk.publicKey,
     relayer: relayer.zkPublicKey,
-
     enabled,
     c_ins,
     a_ins,
@@ -192,49 +219,33 @@ async function buildTransferCall(
     pathElements,
     pathIndices,
     nullifiers,
-
     output_enabled: [receiverEnabled, changeEnabled, relayerEnabled],
-
     c_outs: [
-      receiverCommitment.decimal,
-      changeCommitment.decimal,
-      relayerCommitment.decimal,
+        receiverEnabled ? receiverCommitment.decimal : "0",
+        changeEnabled   ? changeCommitment.decimal   : "0",
+        relayerEnabled  ? relayerCommitment.decimal  : "0",
     ],
-
-    a_outs: [
-      receiverAmt.toString(),
-      changeAmt.toString(),
-      feeAmt.toString(),
-    ],
-
-    r_outs: [rReceiver, rChange, rRelayer],
-
-    receivers: [
-      receiver.zkPublicKey,
-      sender.zk.publicKey,
-      relayer.zkPublicKey,
-    ],
+    a_outs:    [receiverAmt.toString(), changeAmt.toString(), feeAmt.toString()],
+    r_outs:    [rReceiver, rChange, rRelayer],
+    receivers: [receiver.zkPublicKey, sender.zk.publicKey, relayer.zkPublicKey],
   };
 
-  // ── ZK proof ──────────────────────────────────────────────────────────────
   const { proof: zkProof, publicSignals } = await snarkjs.groth16.fullProve(
     circuitInput,
     "/zk/transfer_proof.wasm",
     "/zk/transfer_final.zkey"
   );
-  console.log("publicsignals:  ", publicSignals);
+  console.log("public signals frontend: ",publicSignals);
   const calldata = await snarkjs.groth16.exportSolidityCallData(zkProof, publicSignals);
-  const argv = calldata.replace(/["[\]\s]/g, "").split(",");
-
+  const argv     = calldata.replace(/["[\]\s]/g, "").split(",");
   const a = [argv[0], argv[1]];
   const b = [[argv[2], argv[3]], [argv[4], argv[5]]];
   const c = [argv[6], argv[7]];
 
-  // ── assemble TransferCall ─────────────────────────────────────────────────
   const transferCall = {
     a, b, c,
     enabled,
-    roots:     rootsBytes32,
+    roots:      rootsBytes32,
     poolIds,
     nullifiers: nullifiersBytes32,
     C1: receiverEnabled ? receiverCommitment.bytes32 : ZERO_HASH,
@@ -245,23 +256,21 @@ async function buildTransferCall(
     encryptedNote3,
   };
 
-  return { transferCall, changeAmt, rChange, zkProof };
+  return { transferCall, zkProof };
 }
 
-// ─── Steps ────────────────────────────────────────────────────────────────────
-const STEPS = ["idle", "relayer", "building", "proving", "sending", "done", "error"];
-
+// ─── Step indicator ───────────────────────────────────────────────────────────
 function StepIndicator({ current }) {
   const active = ["relayer", "building", "proving", "sending", "done"];
-  const idx = active.indexOf(current);
+  const idx    = active.indexOf(current);
   return (
     <div className="flex items-center gap-1 mb-6">
       {active.map((s, i) => (
         <React.Fragment key={s}>
           <div className={`w-2 h-2 rounded-full transition-all duration-300 ${
-            i < idx  ? "bg-prifi-600" :
+            i < idx   ? "bg-prifi-600" :
             i === idx ? "bg-prifi-400 animate-pulse" :
-            "bg-noir-600"
+                        "bg-noir-600"
           }`} />
           {i < active.length - 1 && (
             <div className={`flex-1 h-px transition-all duration-500 ${i < idx ? "bg-prifi-600" : "bg-noir-700"}`} />
@@ -275,17 +284,15 @@ function StepIndicator({ current }) {
 // ─── User selector ────────────────────────────────────────────────────────────
 function UserSelector({ allUsers, selected, onSelect, currentAddress }) {
   const [query, setQuery] = useState("");
-  const filtered = allUsers.filter((u) =>
-    u.realAddress?.toLowerCase() !== currentAddress?.toLowerCase() &&
-    (u.name?.toLowerCase().includes(query.toLowerCase()) ||
-     u.realAddress?.toLowerCase().includes(query.toLowerCase()))
+  const filtered = allUsers.filter(
+    (u) =>
+      u.realAddress?.toLowerCase() !== currentAddress?.toLowerCase() &&
+      (u.name?.toLowerCase().includes(query.toLowerCase()) ||
+       u.realAddress?.toLowerCase().includes(query.toLowerCase()))
   );
-
   return (
     <div className="space-y-2">
-      <label className="font-display text-xs text-white/60 uppercase tracking-widest block">
-        Recipient
-      </label>
+      <label className="font-display text-xs text-white/60 uppercase tracking-widest block">Recipient</label>
       <input
         type="text"
         placeholder="Search by name or address…"
@@ -325,7 +332,7 @@ function UserSelector({ allUsers, selected, onSelect, currentAddress }) {
   );
 }
 
-// ─── Main component ───────────────────────────────────────────────────────────
+// ─── Main ─────────────────────────────────────────────────────────────────────
 export default function TransferModal({ onClose }) {
   const { walletKeys, address, allUsers } = useWallet();
   const { allUnspentUTXOs, getMerkleProof, fetchLatest } = usePool();
@@ -336,102 +343,66 @@ export default function TransferModal({ onClose }) {
   const [stepLabel, setStepLabel]       = useState("");
   const [txHash, setTxHash]             = useState(null);
   const [errorMsg, setErrorMsg]         = useState(null);
-  const [callCount, setCallCount]       = useState(0);
+  const [provenCount, setProvenCount]   = useState(0);
+  const [totalProofs, setTotalProofs]   = useState(0);
 
-  // ── derived values ─────────────────────────────────────────────────────────
   const parsedAmt = useMemo(() => {
     try { return ethers.parseEther(amountEth || "0"); } catch { return ZERO_BIG; }
   }, [amountEth]);
-
-  // How many TransferCalls will we need? (rough estimate — 1 for most cases)
-  const estimatedCalls = useMemo(() => {
-    if (parsedAmt === ZERO_BIG || allUnspentUTXOs.length === 0) return 0;
-    const totalAvailable = allUnspentUTXOs.reduce((s, u) => s + BigInt(u.amount), ZERO_BIG);
-    const needed = parsedAmt + FEE_PER_CALL;
-    if (totalAvailable < needed) return 0; // can't afford
-    // naive: 1 call covers up to 4 inputs
-    return 1;
-  }, [parsedAmt, allUnspentUTXOs]);
-
-  const totalFee = FEE_PER_CALL * BigInt(Math.max(estimatedCalls, 1));
-  const userReceives = parsedAmt;
-  const totalNeeded  = parsedAmt + totalFee;
 
   const totalAvailable = useMemo(
     () => allUnspentUTXOs.reduce((s, u) => s + BigInt(u.amount), ZERO_BIG),
     [allUnspentUTXOs]
   );
 
-  const isValid =
-    selectedUser &&
-    parsedAmt > ZERO_BIG &&
-    totalAvailable >= totalNeeded;
-
+  const totalNeeded = parsedAmt + TOTAL_FEE;
+  const isValid = selectedUser && parsedAmt > ZERO_BIG && totalAvailable >= totalNeeded;
   const isRunning = !["idle", "done", "error"].includes(step);
 
-  // ── main handler ───────────────────────────────────────────────────────────
   const handleTransfer = useCallback(async () => {
     setErrorMsg(null);
     setTxHash(null);
-    setCallCount(0);
+    setProvenCount(0);
+    setTotalProofs(0);
 
     try {
-      // 1. Fetch relayer
+      // 1. Relayer
       setStep("relayer");
       setStepLabel("Fetching relayer keys…");
       const relRes = await fetch(`${BASE_URL}/relayer/get`);
       if (!relRes.ok) throw new Error("Could not fetch relayer info");
       const relayer = await relRes.json();
-      // relayer = { publicKey, zkPublicKey }
 
       // 2. Select UTXOs
       setStep("building");
       setStepLabel("Selecting inputs…");
-
-      const transferAmt = parsedAmt; // BigInt
-      const needed      = transferAmt + FEE_PER_CALL;
-      const selected    = selectUTXOs(allUnspentUTXOs, needed);
-
+      const selected = selectUTXOs(allUnspentUTXOs, parsedAmt + TOTAL_FEE);
       if (!selected) {
         throw new Error(
-          `Insufficient balance. Need ${ethers.formatEther(needed)} MON, ` +
+          `Insufficient balance. Need ${ethers.formatEther(totalNeeded)} MON, ` +
           `have ${ethers.formatEther(totalAvailable)} MON`
         );
       }
 
-      // 3. Split into batches of MAX_INPUTS
-      //    In almost all cases this is a single call.
-      //    If the user has many tiny notes we may need multiple calls,
-      //    chaining the change output of call N as a virtual input to call N+1.
-      //    For simplicity we handle the 99% case (1 call) and the rare multi-call.
+      // 3. Plan calls
+      const callPlans = planCalls(selected, parsedAmt, TOTAL_FEE);
+      setTotalProofs(callPlans.length);
+      setStepLabel(`Planned ${callPlans.length} call(s). Building proofs…`);
+
+      // 4. Generate proofs
+      setStep("proving");
       const transferCalls = [];
-      const zkProofs = [];
-      let   remaining     = transferAmt; // how much still needs to reach receiver
-      let   inputBatch    = selected;
+      const zkProofs      = [];
 
-      setStepLabel("Building transfer call(s)…");
+      for (let i = 0; i < callPlans.length; i++) {
+        const plan = callPlans[i];
+        setStepLabel(`Generating ZK proof ${i + 1} of ${callPlans.length}…`);
 
-      while (remaining > ZERO_BIG || inputBatch.length > 0) {
-        const batchInputs = inputBatch.slice(0, MAX_INPUTS);
-        const batchTotal  = batchInputs.reduce((s, u) => s + BigInt(u.amount), ZERO_BIG);
-
-        const fee        = FEE_PER_CALL;
-        // How much goes to receiver in THIS call
-        const toReceiver = remaining <= batchTotal - fee ? remaining : batchTotal - fee;
-        const change     = batchTotal - toReceiver - fee;
-
-        setStep("proving");
-        setStepLabel(
-          `Generating ZK proof ${transferCalls.length + 1}` +
-          (inputBatch.length > MAX_INPUTS ? ` of ~${Math.ceil(inputBatch.length / MAX_INPUTS)}` : "") +
-          "…"
-        );
-
-        const { transferCall, changeAmt: changeLeft, rChange , zkProof } = await buildTransferCall(
-          batchInputs,
-          toReceiver,
-          change,
-          fee,
+        const { transferCall, zkProof } = await buildTransferCall(
+          plan.inputs,
+          plan.receiverAmt,
+          plan.changeAmt,
+          plan.feeAmt,
           {
             zkPublicKey:            selectedUser.zkPublicKey,
             privateWalletPublicKey: selectedUser.privateWalletPublicKey,
@@ -443,28 +414,10 @@ export default function TransferModal({ onClose }) {
 
         transferCalls.push(transferCall);
         zkProofs.push(zkProof);
-        setCallCount(transferCalls.length);
-
-        remaining     -= toReceiver;
-        inputBatch     = inputBatch.slice(MAX_INPUTS);
-
-        // If there's leftover change AND more inputs to spend, carry the change
-        // forward as a "virtual" input in the next batch.
-        // (In practice this almost never happens for normal use.)
-        if (remaining > ZERO_BIG && inputBatch.length > 0 && change > ZERO_BIG) {
-          // The change UTXO isn't on-chain yet so we can't use it as a real
-          // Merkle input. Abort with a clear message — user should wait for
-          // the first tx to land and then transfer the rest.
-          throw new Error(
-            "Transfer requires more than one on-chain transaction. " +
-            "Please send a smaller amount or wait for pending notes to confirm."
-          );
-        }
-
-        if (inputBatch.length === 0) break;
+        setProvenCount(i + 1);
       }
 
-      // 4. Send to relayer API
+      // 5. Submit
       setStep("sending");
       setStepLabel("Sending to relayer…");
 
@@ -480,32 +433,25 @@ export default function TransferModal({ onClose }) {
       }
 
       setTxHash(result.txHash);
-
-      // 5. Refresh pool state
       await fetchLatest();
-
       setStep("done");
-      setStepLabel("Transfer confirmed!");
 
     } catch (err) {
       console.error("[TransferModal]", err);
       setStep("error");
       setErrorMsg(err?.reason || err?.message || "Transfer failed");
     }
-  }, [parsedAmt, selectedUser, walletKeys, allUnspentUTXOs, getMerkleProof, fetchLatest, totalAvailable]);
+  }, [parsedAmt, selectedUser, walletKeys, allUnspentUTXOs, getMerkleProof, fetchLatest, totalAvailable, totalNeeded]);
 
-  // close on Escape
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape" && !isRunning) onClose(); };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose, isRunning]);
 
-  // ── render ─────────────────────────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center modal-backdrop bg-noir-950/80 animate-fade-in">
       <div className="relative w-full max-w-md mx-4 bg-noir-900 border border-noir-600 glow-border animate-slide-up max-h-[90vh] flex flex-col">
-        {/* corner accents */}
         <span className="absolute top-0 left-0 w-4 h-4 border-t-2 border-l-2 border-prifi-600 pointer-events-none" />
         <span className="absolute top-0 right-0 w-4 h-4 border-t-2 border-r-2 border-prifi-600 pointer-events-none" />
         <span className="absolute bottom-0 left-0 w-4 h-4 border-b-2 border-l-2 border-prifi-600 pointer-events-none" />
@@ -524,75 +470,45 @@ export default function TransferModal({ onClose }) {
               <h3 className="font-display text-lg text-white">Private Transfer</h3>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            disabled={isRunning}
-            className="text-white/60 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-          >
+          <button onClick={onClose} disabled={isRunning}
+            className="text-white/60 hover:text-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
+              <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
             </svg>
           </button>
         </div>
 
-        {/* Scrollable body */}
+        {/* Body */}
         <div className="p-6 space-y-5 overflow-y-auto flex-1">
-
           {step !== "idle" && <StepIndicator current={step} />}
 
-          {/* ── IDLE: form ── */}
           {step === "idle" && (
             <>
-              {/* Available balance hint */}
               <div className="flex justify-between items-center">
-                <span className="font-display text-xs text-white/40 uppercase tracking-widest">
-                  Available
-                </span>
-                <span className="font-display text-xs text-prifi-400">
-                  {ethers.formatEther(totalAvailable)} MON
-                </span>
+                <span className="font-display text-xs text-white/40 uppercase tracking-widest">Available</span>
+                <span className="font-display text-xs text-prifi-400">{ethers.formatEther(totalAvailable)} MON</span>
               </div>
 
-              {/* Recipient */}
-              <UserSelector
-                allUsers={allUsers}
-                selected={selectedUser}
-                onSelect={setSelectedUser}
-                currentAddress={address}
-              />
+              <UserSelector allUsers={allUsers} selected={selectedUser} onSelect={setSelectedUser} currentAddress={address} />
 
-              {/* Amount */}
               <div>
-                <label className="font-display text-xs text-white/60 uppercase tracking-widest block mb-2">
-                  Amount (MON)
-                </label>
+                <label className="font-display text-xs text-white/60 uppercase tracking-widest block mb-2">Amount (MON)</label>
                 <div className="relative">
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={amountEth}
-                    onChange={(e) => setAmountEth(e.target.value)}
-                    placeholder="0.00"
+                    type="number" min="0" step="0.01" value={amountEth}
+                    onChange={(e) => setAmountEth(e.target.value)} placeholder="0.00"
                     className="w-full bg-noir-800 border border-noir-600 focus:border-prifi-600 outline-none px-4 py-3 font-display text-white text-lg placeholder-white/20 transition-colors"
                   />
                   <button
                     onClick={() => {
-                      // max = available - fee
-                      const max = totalAvailable > FEE_PER_CALL
-                        ? totalAvailable - FEE_PER_CALL
-                        : ZERO_BIG;
+                      const max = totalAvailable > TOTAL_FEE ? totalAvailable - TOTAL_FEE : ZERO_BIG;
                       setAmountEth(ethers.formatEther(max));
                     }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 font-display text-xs text-prifi-600 hover:text-prifi-400 transition-colors border border-prifi-600/40 px-2 py-0.5"
-                  >
-                    MAX
-                  </button>
+                    className="absolute right-3 top-1/2 -translate-y-1/2 font-display text-xs text-prifi-600 hover:text-prifi-400 border border-prifi-600/40 px-2 py-0.5"
+                  >MAX</button>
                 </div>
               </div>
 
-              {/* Breakdown */}
               {parsedAmt > ZERO_BIG && (
                 <div className="border border-noir-700 bg-noir-800/40 divide-y divide-noir-700">
                   <div className="flex justify-between px-4 py-2.5">
@@ -601,7 +517,7 @@ export default function TransferModal({ onClose }) {
                   </div>
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="font-display text-xs text-white/60">Relayer fee</span>
-                    <span className="font-display text-xs text-white/60">− {ethers.formatEther(FEE_PER_CALL)} MON</span>
+                    <span className="font-display text-xs text-white/60">− {ethers.formatEther(TOTAL_FEE)} MON</span>
                   </div>
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="font-display text-xs text-white/60">Total deducted</span>
@@ -611,33 +527,27 @@ export default function TransferModal({ onClose }) {
                   </div>
                   <div className="flex justify-between px-4 py-2.5">
                     <span className="font-display text-xs text-prifi-400">Receiver gets</span>
-                    <span className="font-display text-xs text-prifi-400">{ethers.formatEther(userReceives)} MON</span>
+                    <span className="font-display text-xs text-prifi-400">{ethers.formatEther(parsedAmt)} MON</span>
                   </div>
                   {totalAvailable < totalNeeded && (
                     <div className="px-4 py-2.5">
-                      <span className="font-display text-xs text-crimson-400">
-                        Insufficient balance
-                      </span>
+                      <span className="font-display text-xs text-crimson-400">Insufficient balance</span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Privacy hint */}
               <div className="flex items-start gap-3 p-3 border border-prifi-600/20 bg-prifi-600/5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4dffc8" strokeWidth="1.5" className="mt-0.5 flex-shrink-0">
-                  <circle cx="12" cy="12" r="10" />
-                  <line x1="12" y1="8" x2="12" y2="12" />
-                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
                 </svg>
                 <p className="font-body text-xs text-white/60 leading-relaxed">
-                  This transfer is shielded end-to-end. Only the recipient can decrypt their note. The transaction is submitted by the relayer so your on-chain identity is never linked to the transfer.
+                  Shielded end-to-end. Only the recipient can decrypt their note. Submitted by the relayer — your identity is never linked to this transfer.
                 </p>
               </div>
             </>
           )}
 
-          {/* ── RUNNING ── */}
           {isRunning && (
             <div className="flex flex-col items-center gap-4 py-4">
               <div className="relative w-12 h-12">
@@ -650,10 +560,10 @@ export default function TransferModal({ onClose }) {
                   <p className="font-body text-xs text-white/40 text-center">
                     ZK proof generation runs in your browser — please wait.
                   </p>
-                  {callCount > 0 && (
+                  {totalProofs > 1 && (
                     <div className="flex items-center gap-2 border border-noir-700 bg-noir-800 px-4 py-2">
-                      <span className="font-display text-xs text-prifi-600">{callCount}</span>
-                      <span className="font-display text-xs text-white/40">call(s) proven so far</span>
+                      <span className="font-display text-xs text-prifi-600">{provenCount}/{totalProofs}</span>
+                      <span className="font-display text-xs text-white/40">proofs generated</span>
                     </div>
                   )}
                 </>
@@ -661,7 +571,6 @@ export default function TransferModal({ onClose }) {
             </div>
           )}
 
-          {/* ── DONE ── */}
           {step === "done" && (
             <div className="flex flex-col items-center gap-4 py-4 text-center">
               <div className="w-12 h-12 border border-prifi-600/40 flex items-center justify-center">
@@ -670,33 +579,24 @@ export default function TransferModal({ onClose }) {
                 </svg>
               </div>
               <div>
-                <p className="font-display text-sm text-prifi-400 tracking-widest uppercase mb-1">
-                  Transfer Confirmed
-                </p>
+                <p className="font-display text-sm text-prifi-400 tracking-widest uppercase mb-1">Transfer Confirmed</p>
                 <p className="font-body text-xs text-white/60">
                   {ethers.formatEther(parsedAmt)} MON sent privately to{" "}
                   <span className="text-prifi-400">{selectedUser?.name}</span>.
                 </p>
               </div>
               {txHash && (
-                <a
-                  href={`https://testnet.monadexplorer.com/tx/${txHash}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="font-display text-xs text-prifi-600 hover:text-prifi-400 underline underline-offset-2 transition-colors"
-                >
+                <a href={`https://testnet.monadexplorer.com/tx/${txHash}`} target="_blank" rel="noreferrer"
+                  className="font-display text-xs text-prifi-600 hover:text-prifi-400 underline underline-offset-2 transition-colors">
                   View on Explorer ↗
                 </a>
               )}
             </div>
           )}
 
-          {/* ── ERROR ── */}
           {step === "error" && (
             <div className="border border-crimson-400/40 bg-crimson-400/5 p-4">
-              <p className="font-display text-xs text-crimson-400 uppercase tracking-widest mb-1">
-                Transfer Failed
-              </p>
+              <p className="font-display text-xs text-crimson-400 uppercase tracking-widest mb-1">Transfer Failed</p>
               <p className="font-body text-xs text-white/60 break-words">{errorMsg}</p>
             </div>
           )}
@@ -705,31 +605,20 @@ export default function TransferModal({ onClose }) {
         {/* Footer */}
         <div className="p-6 pt-0 flex gap-3 flex-shrink-0">
           {step === "idle" && (
-            <button
-              onClick={handleTransfer}
-              disabled={!isValid}
-              className="flex-1 font-display text-xs tracking-widest uppercase py-3 border border-prifi-600/60 text-prifi-400 hover:bg-prifi-600/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
-            >
+            <button onClick={handleTransfer} disabled={!isValid}
+              className="flex-1 font-display text-xs tracking-widest uppercase py-3 border border-prifi-600/60 text-prifi-400 hover:bg-prifi-600/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed">
               Transfer Privately
             </button>
           )}
-
           {step === "error" && (
-            <button
-              onClick={() => { setStep("idle"); setErrorMsg(null); }}
-              className="flex-1 font-display text-xs tracking-widest uppercase py-3 border border-noir-600 text-white/60 hover:text-white hover:border-noir-500 transition-all"
-            >
+            <button onClick={() => { setStep("idle"); setErrorMsg(null); }}
+              className="flex-1 font-display text-xs tracking-widest uppercase py-3 border border-noir-600 text-white/60 hover:text-white hover:border-noir-500 transition-all">
               Try Again
             </button>
           )}
-
           {(step === "idle" || step === "done" || step === "error") && (
-            <button
-              onClick={onClose}
-              className={`font-display text-xs tracking-widest uppercase py-3 border border-noir-600 text-white/60 hover:text-white hover:border-noir-500 transition-all ${
-                step === "done" ? "flex-1" : "px-5"
-              }`}
-            >
+            <button onClick={onClose}
+              className={`font-display text-xs tracking-widest uppercase py-3 border border-noir-600 text-white/60 hover:text-white hover:border-noir-500 transition-all ${step === "done" ? "flex-1" : "px-5"}`}>
               {step === "done" ? "Close" : "Cancel"}
             </button>
           )}

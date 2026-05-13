@@ -24,6 +24,7 @@ const transferVKey =
     require("../zk/transfer_verification_key.json");
 
 
+const ZERO_COMMITMENT = ethers.ZeroHash;
 
 // =====================================
 // BUILD PUBLIC SIGNALS
@@ -60,19 +61,19 @@ function buildPublicSignals(call) {
 
     // output enabled
     publicSignals.push(
-        call.C1 !== ethers.ZeroHash
+        call.C1 !== ZERO_COMMITMENT
             ? "1"
             : "0"
     );
 
     publicSignals.push(
-        call.C2 !== ethers.ZeroHash
+        call.C2 !== ZERO_COMMITMENT
             ? "1"
             : "0"
     );
 
     publicSignals.push(
-        call.C3 !== ethers.ZeroHash
+        call.C3 !== ZERO_COMMITMENT
             ? "1"
             : "0"
     );
@@ -198,10 +199,10 @@ async function transferController(
             const signals =
                 buildPublicSignals(call);
 
-            // console.log(
-            //     "frontend public signals:",
-            //     signals
-            // );
+            console.log(
+                "built public singals:",
+                signals
+            );
 
             const verified =
                 await snarkjs.groth16
@@ -213,6 +214,10 @@ async function transferController(
 
                         proof
                     );
+            console.log(
+                "call", i,
+                "verified", verified
+                );
 
             if (!verified) {
 
@@ -243,7 +248,7 @@ async function transferController(
 
                 if (
                     nullifier ===
-                    ethers.ZeroHash
+                    ZERO_COMMITMENT
                 ) {
 
                     continue;
@@ -322,6 +327,8 @@ async function transferController(
         }
 
 
+        // const zeroCommitment = await privatePool.ZERO_COMMITMENT();
+        // console.log("zero commitment: ",zeroCommitment);
 
         // =====================================
         // ESTIMATE GAS
@@ -367,7 +374,6 @@ async function transferController(
         // =====================================
         // PROFITABILITY CHECK
         // =====================================
-
         if (
             totalRelayerFee <
             estimatedCost
