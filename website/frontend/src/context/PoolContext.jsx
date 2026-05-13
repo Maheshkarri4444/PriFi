@@ -141,7 +141,7 @@ export function PoolProvider({ children }) {
 
           const decrypted = tryDecryptNote(encryptedHex, privateKey);
           if (!decrypted) continue; // not yours
-
+        //   console.log("try decrypt",decrypted );
           // Compute nullifier: Poseidon(2, secretKey, leafIndex)
           const sk = walletKeys?.zk?.secretKey;
           if (!sk) continue;
@@ -150,15 +150,27 @@ export function PoolProvider({ children }) {
               ? pool.leafToIndex.get(cmx)
               : pool.leafToIndex[cmx]
             : i;
-          const nullifier = poseidon.F.toString(
-                poseidon([
-                    2,
-                    BigInt(cmx),           // commitment
-                    BigInt(decrypted.randomness), // randomness
-                    BigInt(sk),            // secretKey
-                ])
-                );
+            const nullifier =
+                ethers.zeroPadValue(
 
+                    ethers.toBeHex(
+
+                        BigInt(
+                            poseidon.F.toString(
+                                poseidon([
+                                    2,
+                                    BigInt(cmx),
+                                    BigInt(decrypted.randomness),
+                                    BigInt(sk),
+                                ])
+                            )
+                        )
+                    ),
+
+                    32
+                );
+            // console.log("spent nullifier:",data.spentNullifiers);
+            // console.log(`nullifier: ${nullifier} spent nullifier: ${data.spentNullifiers.includes(nullifier)}`);
           utxosForPool.push({
             commitment: cmx,
             amount: decrypted.amount,
