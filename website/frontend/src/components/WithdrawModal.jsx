@@ -81,9 +81,8 @@ function selectUTXOs(unspent, targetBigInt) {
 function planWithdraw(unspent, withdrawAmt) {
   if (!unspent?.length || withdrawAmt <= ZERO_BIG) return null;
 
-  // We need UTXOs that cover withdrawAmt + RELAYER_FEE (fee comes from balance)
   const totalNeeded = withdrawAmt + RELAYER_FEE;
-  const selected    = selectUTXOs(unspent, totalNeeded);
+  const selected = selectUTXOs(unspent, totalNeeded);
   if (!selected) return null;
 
   const batches = [];
@@ -92,29 +91,28 @@ function planWithdraw(unspent, withdrawAmt) {
 
   const plans = [];
   let withdrawRemaining = withdrawAmt;
-  let feeRemaining      = RELAYER_FEE; // paid once, in the last batch
+  let feeRemaining = RELAYER_FEE; // track how much fee is still unpaid
 
   for (let i = 0; i < batches.length; i++) {
-    const batch      = batches[i];
-    const isLast     = i === batches.length - 1;
+    const batch = batches[i];
     const batchTotal = batch.reduce((s, u) => s + BigInt(u.amount), ZERO_BIG);
 
-    // Fee only comes out of the last batch
-    const feeAmt = isLast ? feeRemaining : ZERO_BIG;
+    // Take as much fee from this batch as possible (up to what's still owed)
+    const feeAmt = batchTotal >= feeRemaining ? feeRemaining : batchTotal;
+    feeRemaining -= feeAmt;
 
-    const available = batchTotal - feeAmt; // what's left after fee for withdraw + change
-    if (available < ZERO_BIG) return null; // last batch too small to cover fee
+    const available = batchTotal - feeAmt;
 
     const toWithdraw = withdrawRemaining <= available ? withdrawRemaining : available;
-    const changeAmt  = available - toWithdraw;
+    const changeAmt = available - toWithdraw;
 
     withdrawRemaining -= toWithdraw;
-    if (isLast) feeRemaining = ZERO_BIG;
 
     plans.push({ inputs: batch, withdrawAmt: toWithdraw, changeAmt, feeAmt });
   }
 
   if (withdrawRemaining > ZERO_BIG) return null;
+  if (feeRemaining > ZERO_BIG) return null; // fee couldn't be fully covered
   return { plans, totalFee: RELAYER_FEE };
 }
 
@@ -330,25 +328,9 @@ export default function WithdrawModal({ onClose }) {
   // pre-subtract RELAYER_FEE before the search, so the result is the true
   // maximum destination amount (not artificially lowered by a double-subtract).
   const maxWithdrawable = useMemo(() => {
-    if (totalAvailable === ZERO_BIG) return ZERO_BIG;
-    // The absolute ceiling: we can never send more to the wallet than what's
-    // in the pool minus the flat fee (fee always comes from the same UTXOs).
-    const ceiling = totalAvailable > RELAYER_FEE
-      ? totalAvailable - RELAYER_FEE
-      : ZERO_BIG;
-    if (ceiling === ZERO_BIG) return ZERO_BIG;
-
-    // Binary-search within [0, ceiling] for the largest amount planWithdraw accepts.
-    // This handles UTXO fragmentation (e.g. can't always reach the ceiling exactly).
-    let lo = ZERO_BIG;
-    let hi = ceiling;
-    for (let i = 0; i < 64; i++) {
-      const mid = (lo + hi + 1n) / 2n;
-      if (planWithdraw(allUnspentUTXOs, mid) !== null) lo = mid;
-      else hi = mid - 1n;
-    }
-    return lo;
-  }, [totalAvailable, allUnspentUTXOs]);
+  if (totalAvailable <= RELAYER_FEE) return ZERO_BIG;
+  return totalAvailable - RELAYER_FEE;
+}, [totalAvailable]);
 
   // Insufficient when the plan couldn't be built (planWithdraw returned null)
   const insufficient = parsedAmt > ZERO_BIG && plan === null;
@@ -441,6 +423,23 @@ export default function WithdrawModal({ onClose }) {
       setErrorMsg(err?.reason || err?.message || "Withdraw failed");
     }
   }, [parsedAmt, address, walletKeys, allUnspentUTXOs, getMerkleProof, fetchLatest, totalAvailable]);
+
+  console.log("UTXOs:", allUnspentUTXOs.map(u => ethers.formatEther(u.amount)));
+  console.log("maxWithdrawable:", ethers.formatEther(maxWithdrawable));  
+  console.log(
+  "RAW TOTAL:",
+  totalAvailable.toString()
+);
+
+console.log(
+  "EXPECTED 4.3:",
+  ethers.parseEther("4.3").toString()
+);
+
+console.log(
+  "DIFF:",
+  (ethers.parseEther("4.3") - totalAvailable).toString()
+); 
 
   useEffect(() => {
     const h = (e) => { if (e.key === "Escape" && !isRunning) onClose(); };

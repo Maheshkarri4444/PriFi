@@ -102,7 +102,15 @@ async function startSyncLoop() {
 
         try {
 
-            await syncPools();
+            await Promise.race([
+                syncPools(),
+                new Promise((_, reject) =>
+                    setTimeout(
+                        () => reject(new Error("Sync timeout")),
+                        60000
+                    )
+                )
+            ]);
 
         } catch (err) {
 
@@ -135,6 +143,9 @@ async function syncPools() {
     }
 
     isSyncing = true;
+
+    try {
+
 
     console.log(
         "\n========== SYNCING POOLS =========="
@@ -434,10 +445,15 @@ async function syncPools() {
     await noteState.save();
 
 
-    isSyncing = false;
     console.log(
         "\n========== POOL SYNC COMPLETE =========="
     );
+        
+    } catch {
+        console.error("Sync failed:", err);
+    } finally {
+        isSyncing = false;
+    }
 
 }
 
