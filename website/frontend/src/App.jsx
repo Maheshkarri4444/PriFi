@@ -5,6 +5,7 @@ import { PoolProvider } from "./context/PoolContext";
 import HomePage from "./pages/HomePage";
 import WalletPage from "./pages/WalletPage";
 import UsernameModal from "./components/UsernameModal";
+import NotFoundPage from "./pages/NotFoundPage";
 
 export default function App() {
   const { address, needsUsername, walletChanged } = useWallet();
@@ -25,7 +26,7 @@ export default function App() {
               : <Navigate to="/" replace />
           }
         />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </PoolProvider>
   );
