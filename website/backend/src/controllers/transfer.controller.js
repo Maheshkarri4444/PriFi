@@ -23,8 +23,9 @@ const {
 const transferVKey =
     require("../zk/transfer_verification_key.json");
 
-
+const { selfWithdrawRelayerBalance } = require("./relayerWithdraw");
 const ZERO_COMMITMENT = ethers.ZeroHash;
+const BUFFER_BALANCE = ethers.parseEther("4");
 
 // =====================================
 // BUILD PUBLIC SIGNALS
@@ -94,6 +95,10 @@ function buildPublicSignals(call) {
     return publicSignals;
 }
 
+ 
+async function getRelayerEthBalance() {
+    return provider.provider.getBalance(wallet.address);
+}
 
 // =====================================
 // BUILD PROOF OBJECT
@@ -397,6 +402,51 @@ async function transferController(
                 });
         }
 
+        // Even if the fee from the user covers the cost in pool, the relayer
+        // needs enough ETH in its hot wallet RIGHT NOW to pay for gas upfront.
+        // If its ETH balance is below estimatedCost, sweep pool UTXOs to ETH
+        // first, then proceed.
+
+        let ethBalance = await getRelayerEthBalance();
+        console.log("[transferController] Relayer ETH balance:", ethers.formatEther(ethBalance));
+ 
+        if (ethBalance < BUFFER_BALANCE + estimatedCost) {
+            console.log(
+                "[transferController] ETH balance insufficient for gas. " +
+                `Need ${ethers.formatEther(estimatedCost)}, have ${ethers.formatEther(ethBalance)}. ` +
+                "Triggering relayer self-withdrawal…"
+            );
+ 
+            try {
+                await selfWithdrawRelayerBalance();
+            } catch (sweepErr) {
+                console.error("[transferController] Self-withdrawal failed:", sweepErr);
+                return res.status(500).json({
+                    success: false,
+                    message: "Relayer ETH balance too low and self-withdrawal failed: " + sweepErr.message,
+                    estimatedCost: estimatedCost.toString(),
+                    ethBalance:    ethBalance.toString(),
+                });
+            }
+ 
+            // Re-check ETH balance after sweep
+            ethBalance = await getRelayerEthBalance();
+            console.log(
+                "[transferController] Relayer ETH balance after sweep:",
+                ethers.formatEther(ethBalance)
+            );
+ 
+            if (ethBalance < estimatedCost) {
+                return res.status(500).json({
+                    success: false,
+                    message:
+                        "Relayer ETH balance still insufficient after self-withdrawal. " +
+                        "Pool UTXOs may be exhausted.",
+                    estimatedCost: estimatedCost.toString(),
+                    ethBalance:    ethBalance.toString(),
+                });
+            }
+        }
 
 
         // =====================================

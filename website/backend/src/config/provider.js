@@ -116,7 +116,7 @@ async function buildWallet() {
         ) {
 
             tree.insert(
-                BigInt(cmx)
+                BigInt(commitment)
             );
 
             try {
@@ -139,27 +139,50 @@ async function buildWallet() {
                 const parsed =
                     JSON.parse(decrypted);
 
-                const expectedNullifier =
-                    poseidon.F.toString(
-
-                        poseidon([
-
-                            2,
-
-                            commitment.toString(),
-
-                            parsed.randomness,
-
-                            relayerWallet
-                                .zk
-                                .secretKey
-                        ])
+                const nullifier =
+                    ethers.zeroPadValue(
+    
+                        ethers.toBeHex(
+    
+                            BigInt(
+                                poseidon.F.toString(
+                                    poseidon([
+                                        2,
+                                        BigInt(commitment),
+                                        BigInt(parsed.randomness),
+                                        BigInt(relayerWallet
+                                            .zk
+                                            .secretKey
+                                        ),
+                                    ])
+                                )
+                            )
+                        ),
+    
+                        32
                     );
+
+                // const expectedNullifier =
+                //     poseidon.F.toString(
+
+                //         poseidon([
+
+                //             2,
+
+                //             BigInt(commitment),
+
+                //             BigInt(parsed.randomness),
+
+                //             BigInt(relayerWallet
+                //                 .zk
+                //                 .secretKey)
+                //         ])
+                //     );
 
                 if (
 
                     spentNullifiers.has(
-                        expectedNullifier
+                        nullifier
                     )
                 ) {
 
