@@ -180,6 +180,9 @@ export default function WalletPage() {
                   {new Date(lastSyncedAt).toLocaleTimeString()}
                 </span>
               )}
+              <span className="text-xs font-body text-prifi-600">
+                syncs for every 10 seconds                
+              </span>
             </div>
           </div>
         </div>
