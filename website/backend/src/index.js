@@ -33,7 +33,7 @@ app.use(
     cors({
 
         origin: [
-            "https://pri-fi.vercel.app/",
+            "https://pri-fi.vercel.app",
         ],
 
         methods: [
